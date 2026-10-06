@@ -1,0 +1,109 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Phase 6 — Tool Panel styles. Theme variables only (see src/theme.css). */
+
+.gf-tools-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.gf-tools-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gf-muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gf-border-strong);
+}
+
+.gf-tools-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--gf-border);
+  vertical-align: top;
+}
+
+.gf-tools-name {
+  font-family: var(--gf-mono);
+  color: var(--gf-tan);
+  white-space: nowrap;
+}
+
+.gf-tools-row-off td {
+  opacity: 0.55;
+}
+
+/* Risk badges — severity colors on the standard badge frame. */
+.gf-tools-risk-low { color: var(--gf-ok); border-color: var(--gf-ok); }
+.gf-tools-risk-moderate { color: var(--gf-tan); border-color: var(--gf-tan-dim); }
+.gf-tools-risk-high { color: var(--gf-gold-bright); border-color: var(--gf-gold); }
+.gf-tools-risk-critical { color: var(--gf-danger); border-color: var(--gf-danger); }
+
+/* Enable/disable switch. */
+.gf-tools-switch {
+  width: 38px;
+  height: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--gf-border-strong);
+  background: var(--gf-dark-grey);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+}
+
+.gf-tools-switch .gf-tools-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--gf-muted);
+  transition: left 0.15s ease, background 0.15s ease;
+}
+
+.gf-tools-switch.on {
+  border-color: var(--gf-gold);
+}
+
+.gf-tools-switch.on .gf-tools-knob {
+  left: 20px;
+  background: var(--gf-gold);
+}
+
+.gf-tools-error {
+  border: 1px solid var(--gf-danger);
+  color: var(--gf-danger);
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.gf-tools-manifest {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel-2);
+  padding: 12px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.gf-tools-manifest-row {
+  margin-top: 4px;
+}
+
+.gf-tools-result {
+  border: 1px solid var(--gf-border-strong);
+  background: var(--gf-panel-2);
+  margin-top: 16px;
+}
+
+.gf-tools-result pre {
+  font-family: var(--gf-mono);
+  font-size: 12px;
+  padding: 12px;
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  color: var(--gf-offwhite);
+}
