@@ -1,0 +1,332 @@
+/* Guild Foundry AI — workstation theme.
+   Palette: Black, Tan, Gold, Dark Grey, Off-White.
+   Clean lines, high-contrast borders, minimal outer padding, crisp dividers.
+   No gradients. */
+
+:root {
+  --gf-black: #0a0a0a;
+  --gf-panel: #111111;
+  --gf-panel-2: #161616;
+  --gf-dark-grey: #1e1e1e;
+  --gf-border: #2b2b2b;
+  --gf-border-strong: #3d3d3d;
+  --gf-tan: #d2b48c;
+  --gf-tan-dim: #a68d68;
+  --gf-gold: #c9a227;
+  --gf-gold-bright: #e3b93a;
+  --gf-offwhite: #f2ede1;
+  --gf-muted: #8f8a7d;
+  --gf-danger: #c0392b;
+  --gf-ok: #3f9e4d;
+  --gf-font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --gf-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--gf-black);
+  color: var(--gf-offwhite);
+  font-family: var(--gf-font);
+  font-size: 14px;
+  overflow: hidden;
+}
+
+.gf-app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background: var(--gf-black);
+}
+
+/* ---------- Navigation rail ---------- */
+.gf-nav-rail {
+  width: 64px;
+  min-width: 64px;
+  background: var(--gf-panel);
+  border-right: 1px solid var(--gf-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+}
+
+.gf-nav-btn {
+  width: 48px;
+  height: 48px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--gf-muted);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  gap: 2px;
+}
+
+.gf-nav-btn:hover { color: var(--gf-tan); border-color: var(--gf-border); }
+.gf-nav-btn.active {
+  color: var(--gf-gold);
+  border-color: var(--gf-gold);
+  background: var(--gf-dark-grey);
+}
+
+/* ---------- Header / view switcher ---------- */
+.gf-header {
+  height: 48px;
+  min-height: 48px;
+  background: var(--gf-panel);
+  border-bottom: 1px solid var(--gf-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.gf-view-switcher {
+  display: flex;
+  border: 1px solid var(--gf-border);
+}
+
+.gf-view-switcher button {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--gf-border);
+  color: var(--gf-muted);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.gf-view-switcher button:last-child { border-right: none; }
+.gf-view-switcher button.active {
+  background: var(--gf-dark-grey);
+  color: var(--gf-gold);
+}
+
+/* ---------- Layout panes ---------- */
+.gf-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gf-workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.gf-pane {
+  background: var(--gf-black);
+  border-right: 1px solid var(--gf-border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.gf-pane:last-child { border-right: none; }
+
+.gf-pane-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gf-border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gf-tan);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- Chat bubbles: bounded height, internal scroll ---------- */
+.gf-chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gf-bubble {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+  max-width: 100%;
+}
+
+.gf-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--gf-border);
+  background: var(--gf-panel-2);
+}
+
+.gf-bubble-role {
+  font-size: 12px;
+  color: var(--gf-gold);
+  font-weight: 600;
+}
+
+.gf-bubble-actions { display: flex; gap: 6px; }
+
+.gf-icon-btn {
+  background: transparent;
+  border: 1px solid var(--gf-border);
+  color: var(--gf-muted);
+  cursor: pointer;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1;
+}
+.gf-icon-btn:hover { color: var(--gf-gold); border-color: var(--gf-gold); }
+
+.gf-bubble-body {
+  padding: 10px 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* ~25 visible lines of text, then internal scroll */
+  max-height: calc(1.55em * 25);
+  overflow-y: auto;
+}
+
+.gf-bubble-body pre {
+  background: var(--gf-black);
+  border: 1px solid var(--gf-border);
+  padding: 8px;
+  overflow-x: auto;
+  font-family: var(--gf-mono);
+  font-size: 12.5px;
+}
+
+/* ---------- Inputs / buttons ---------- */
+.gf-input, .gf-textarea, .gf-select {
+  background: var(--gf-dark-grey);
+  border: 1px solid var(--gf-border);
+  color: var(--gf-offwhite);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--gf-font);
+  width: 100%;
+}
+.gf-input:focus, .gf-textarea:focus, .gf-select:focus {
+  outline: none;
+  border-color: var(--gf-gold);
+}
+
+.gf-btn {
+  background: var(--gf-dark-grey);
+  border: 1px solid var(--gf-border-strong);
+  color: var(--gf-offwhite);
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.gf-btn:hover { border-color: var(--gf-gold); color: var(--gf-gold); }
+.gf-btn.primary {
+  background: var(--gf-gold);
+  border-color: var(--gf-gold);
+  color: #0a0a0a;
+  font-weight: 600;
+}
+.gf-btn.primary:hover { background: var(--gf-gold-bright); color: #0a0a0a; }
+.gf-btn.danger { border-color: var(--gf-danger); color: var(--gf-danger); }
+
+/* ---------- Status badges ---------- */
+.gf-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--gf-border-strong);
+}
+.gf-badge.ok { color: var(--gf-ok); border-color: var(--gf-ok); }
+.gf-badge.err { color: var(--gf-danger); border-color: var(--gf-danger); }
+.gf-badge.idle { color: var(--gf-muted); }
+
+/* ---------- Drawer ---------- */
+.gf-drawer {
+  width: 360px;
+  min-width: 360px;
+  background: var(--gf-panel);
+  border-left: 1px solid var(--gf-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* ---------- Toast ---------- */
+.gf-toasts {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+.gf-toast {
+  background: var(--gf-panel-2);
+  border: 1px solid var(--gf-gold);
+  color: var(--gf-offwhite);
+  padding: 10px 14px;
+  font-size: 13px;
+  max-width: 320px;
+}
+
+/* ---------- Modal ---------- */
+.gf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+}
+.gf-modal {
+  background: var(--gf-panel);
+  border: 1px solid var(--gf-gold);
+  padding: 20px;
+  min-width: 380px;
+  max-width: 520px;
+}
+
+/* ---------- View modes ---------- */
+.gf-app.view-compact .gf-nav-rail { width: 48px; min-width: 48px; }
+.gf-app.view-compact .gf-bubble-body { max-height: calc(1.55em * 12); }
+.gf-app.view-pwa .gf-nav-rail { display: none; }
+
+/* ---------- Conference grid ---------- */
+.gf-model-grid {
+  flex: 1;
+  display: grid;
+  gap: 0;
+  min-height: 0;
+}
+.gf-model-grid.cols-1 { grid-template-columns: 1fr; }
+.gf-model-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.gf-model-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.gf-model-grid.cols-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.gf-model-grid > .gf-pane { border-bottom: 1px solid var(--gf-border); }
+
+/* ---------- Misc ---------- */
+.gf-divider { border: none; border-top: 1px solid var(--gf-border); margin: 8px 0; }
+.gf-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gf-muted); margin-bottom: 4px; display: block; }
+.gf-row { display: flex; gap: 8px; align-items: center; }
+.gf-muted { color: var(--gf-muted); }
+.gf-gold-text { color: var(--gf-gold); }
