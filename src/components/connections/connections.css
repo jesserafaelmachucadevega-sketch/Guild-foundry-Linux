@@ -1,0 +1,186 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Connections tab styles. Follows the gf-* conventions used across the app. */
+
+.conn-pane {
+  max-width: 980px;
+}
+
+.conn-intro {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.conn-section {
+  margin: 20px 0 10px;
+  font-size: 1.05rem;
+}
+
+.conn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.conn-card {
+  border: 1px solid var(--gf-border, #2a2a2a);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--gf-pane-bg, transparent);
+}
+
+.conn-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.conn-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--gf-border, #2a2a2a);
+}
+
+.conn-badge-ok {
+  border-color: #2f8f4e;
+  color: #4cc06e;
+}
+
+.conn-tagline {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+
+.conn-note {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  opacity: 0.75;
+  line-height: 1.45;
+}
+
+.conn-connect {
+  margin-top: 4px;
+}
+
+.conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--gf-border, #2a2a2a);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.conn-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.conn-small {
+  font-size: 0.85rem;
+}
+
+.conn-danger {
+  color: #e06c6c;
+}
+
+.conn-mono {
+  font-family: ui-monospace, monospace;
+}
+
+.conn-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.conn-modal {
+  background: var(--gf-bg, #141414);
+  border: 1px solid var(--gf-border, #2a2a2a);
+  border-radius: 10px;
+  padding: 20px;
+  width: min(520px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.conn-modal h3 {
+  margin-top: 0;
+}
+
+.conn-modal .gf-label {
+  display: block;
+  margin: 12px 0;
+}
+
+.conn-modal .gf-input,
+.conn-modal .gf-textarea {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.conn-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.conn-scopes {
+  border: 1px solid var(--gf-border, #2a2a2a);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.conn-scope {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 6px 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.conn-scope em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.conn-oauth {
+  margin-top: 16px;
+  border-top: 1px solid var(--gf-border, #2a2a2a);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conn-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.conn-perm-select {
+  width: auto;
+}
+
+.conn-mcp-perm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
