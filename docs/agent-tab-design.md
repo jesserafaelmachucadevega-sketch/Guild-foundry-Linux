@@ -352,6 +352,12 @@ builder agents, never conference members.
 
 - **Choice**: `AvatarPicker` — the girl (pink) or the boy (blue). Saved as
   the `avatar.gender` setting. The still portrait is the default face.
+- **Don't like them?** Upload any picture (`avatar_upload_image`), or just ask
+  the agent — "redesign my avatar as a cyberpunk robot" — and it generates one
+  with `media.generate_image` and sets it via the `avatar.set` tool
+  (`avatar_set_image` command). The custom portrait overrides the default
+  until cleared (`avatar_clear_custom`); uploads get the same circular
+  feathered treatment via CSS.
 - **Activity states**: `AvatarStatus` swaps in a looping clip per activity —
   `typing` (laptop), `talking` (phone/headset), `waiting` (standing, foot
   tap), `idle` (bed, eyes open/close). Missing clips fall back to the still;
@@ -359,8 +365,9 @@ builder agents, never conference members.
 - **Look**: circular crop with a soft feathered/clouded edge (baked into the
   PNGs; the component also applies a CSS radial mask so future clips match).
 - **Clips live in app-data/avatars/** (`girl-typing.webm`, `boy-talking.webm`,
-  …), not in the repo — keeps the install lean. Stills are bundled under
-  `src/assets/avatar/`.
+  …), not in the repo — keeps the install lean. Default portraits are inlined
+  as data URIs (`src/assets/avatar/defaults.ts`); extra stills also load from
+  app-data at runtime.
 - **Wiring** (when the Agent tab lands): map loop state → activity
   (`streaming` → typing, tool-call in flight → waiting, `media.speak`
   playing → talking, otherwise idle) and pass the user's `avatar.gender`.
