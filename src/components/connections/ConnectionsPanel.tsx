@@ -531,12 +531,18 @@ const VIDEO_MODELS = [
   { id: 'fal-ai/veo3.1', label: 'Veo 3.1 — premium, native audio' },
   { id: 'fal-ai/kling-video/v3/pro/text-to-video', label: 'Kling v3 Pro — premium, camera control' },
 ];
+const TTS_VOICES = [
+  { id: 'af_heart', label: 'Heart — warm, natural' },
+  { id: 'af_bella', label: 'Bella — bright, natural' },
+  { id: 'am_adam', label: 'Adam — deep American male, YouTube narrator' },
+];
 
 function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   const [key, setKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [model, setModel] = useState(IMAGE_MODELS[0].id);
   const [videoModel, setVideoModel] = useState(VIDEO_MODELS[0].id);
+  const [voice, setVoice] = useState(TTS_VOICES[0].id);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -554,6 +560,11 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     void invoke<string | null>('settings_get', { key: 'media.video_model' })
       .then((v) => {
         if (live && v && VIDEO_MODELS.some((m) => m.id === v)) setVideoModel(v);
+      })
+      .catch(() => {});
+    void invoke<string | null>('settings_get', { key: 'media.tts_voice' })
+      .then((v) => {
+        if (live && v && TTS_VOICES.some((m) => m.id === v)) setVoice(v);
       })
       .catch(() => {});
     return () => {
@@ -612,6 +623,18 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     }
   };
 
+  const changeVoice = async (id: string) => {
+    const prev = voice;
+    setVoice(id);
+    try {
+      await invoke('settings_set', { key: 'media.tts_voice', value: id });
+      onToast('Voice updated');
+    } catch (e) {
+      setVoice(prev);
+      onToast(errText(e));
+    }
+  };
+
   return (
     <div className="conn-card">
       <div className="conn-card-head">
@@ -661,13 +684,27 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
         </select>
       </label>
       <label className="gf-label conn-modellabel">
-        <span className="gf-muted conn-small">Video model</span>
+        <span className="gf-muted conn-small">Voice model</span>
         <select
           className="gf-input"
           value={videoModel}
           onChange={(e) => void changeVideoModel(e.target.value)}
         >
           {VIDEO_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="gf-label conn-modellabel">
+        <span className="gf-muted conn-small">Voice</span>
+        <select
+          className="gf-input"
+          value={voice}
+          onChange={(e) => void changeVoice(e.target.value)}
+        >
+          {TTS_VOICES.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}
             </option>
