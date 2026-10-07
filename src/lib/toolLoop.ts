@@ -175,7 +175,20 @@ export function runToolLoop(opts: ToolLoopOptions): { cancel: () => void } {
       });
       if (cancelled) return;
       opts.onEvent({ type: 'handshake', manifest: handshake.manifest });
-      const system = [opts.systemPrompt, handshake.system_prompt]
+      // Quota awareness: free-tier models are told their budget so they spend
+      // turns wisely. Paid/local models get no notice (None) — no constraint.
+      let quotaNotice = '';
+      try {
+        const notice = await invoke<string | null>('ratelimit_quota_notice', {
+          provider_id: opts.providerId,
+          model_id: opts.modelId,
+        });
+        if (notice) quotaNotice = notice;
+      } catch {
+        // Non-fatal: the loop works without the notice; enforcement lives
+        // server-side in the rate limiter regardless.
+      }
+      const system = [opts.systemPrompt, handshake.system_prompt, quotaNotice]
         .filter((s): s is string => !!s && s.length > 0)
         .join('\n\n');
 
