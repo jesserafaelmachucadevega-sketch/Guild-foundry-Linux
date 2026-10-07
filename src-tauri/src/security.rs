@@ -151,6 +151,7 @@ generated code, shell output.
 - No personal telemetry by default. Diagnostics are opt-in, clearly explained,
   and can be disabled at any time. Project source is never uploaded by default.
 - Consequential operations may not occur outside their permission boundary.
+- Model requests are rate-limited and quota-guarded by the harness. When the harness signals backpressure or quota exhaustion, stop and tell the user plainly rather than retrying blindly.
 "#;
 
 /// Returns the full security constitution text.
