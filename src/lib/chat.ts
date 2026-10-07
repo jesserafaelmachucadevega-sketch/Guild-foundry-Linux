@@ -70,8 +70,7 @@ export async function streamChat(
   cb: StreamCallbacks,
 ): Promise<() => void> {
   if (!isDesktop()) {
-    cb.onErro
-r(new Error('Desktop Capability Required'));
+    cb.onError(new Error('Desktop Capability Required'));
     return () => undefined;
   }
   const streamId = newStreamId();

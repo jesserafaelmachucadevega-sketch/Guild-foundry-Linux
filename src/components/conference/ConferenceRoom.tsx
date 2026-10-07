@@ -50,8 +50,7 @@ interface VoteState {
   /** roundIndex -> participant slot -> voted model number (1..N) */
   rounds: Record<number, Record<number, number>>;
   /** roundIndex -> user vote (model number) or null */
-  user: Record<n
-umber, number | null>;
+  user: Record<number, number | null>;
 }
 
 function blankPane(): PaneState {
@@ -126,8 +125,7 @@ function MessageView({
       </>
     );
   }
-  return <ChatBu
-bble message={message} onToast={onToast} />;
+  return <ChatBubble message={message} onToast={onToast} />;
 }
 
 export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): React.ReactElement {
@@ -174,8 +172,7 @@ export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): R
 
   const addParticipant = useCallback(() => {
     setParticipants((prev) => {
-      if (prev.leng
-th >= 4) {
+      if (prev.length >= 4) {
         onToast('Maximum 4 models in the Conference Room');
         return prev;
       }
@@ -233,7 +230,6 @@ th >= 4) {
               finish(() => reject(e));
             },
           },
-
         )
           .then((cancel) => {
             cancels.current[slot] = cancel;
@@ -292,8 +288,7 @@ th >= 4) {
           `Debate topic:\n${topicText}\n\n` +
           `The other participants gave these independent answers:\n\n${others}\n\n` +
           'Critique each of the other answers: identify strengths, weaknesses, and ' +
-          'factual or logical problems. B
-e direct and specific.'
+          'factual or logical problems. Be direct and specific.'
         );
       }
       case 'rebuttal': {
@@ -336,8 +331,7 @@ e direct and specific.'
           `${finals}\n\n` +
           'Evaluate them on reasoning quality, evidence, and responsiveness to ' +
           'critique. Declare which model argued best and why, then write a balanced ' +
-          'synthesis of the strongest points from all sides. End with your own
- ' +
+          'synthesis of the strongest points from all sides. End with your own ' +
           'vote on its own line:\nVOTE: <n>'
         );
       }
@@ -420,8 +414,7 @@ e direct and specific.'
     setPhase('running');
     setRoundIndex(-1);
     try {
-      for (let r = 0; r < DEBATE_ROUNDS.length;
- r++) {
+      for (let r = 0; r < DEBATE_ROUNDS.length; r++) {
         if (ctrl.current.stopped) break;
         await waitIfPaused();
         if (ctrl.current.stopped) break;
@@ -491,8 +484,7 @@ e direct and specific.'
     setPhase('idle');
     setRoundIndex(-1);
     setVotes({ rounds: {}, user: {} });
-    setVoteR
-ound(0);
+    setVoteRound(0);
     setWinner(null);
     setTopic('');
     setBroadcast('');
@@ -552,8 +544,7 @@ ound(0);
       onToast(
         err instanceof DesktopCapabilityRequired
           ? 'Desktop Capability Required'
-          : `S
-end failed: ${err instanceof Error ? err.message : String(err)}`,
+          : `Send failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -615,8 +606,7 @@ end failed: ${err instanceof Error ? err.message : String(err)}`,
       const v = modelVotes[s];
       if (v) {
         rows.push({
-     
-     label: `Model ${s + 1}${p.role === 'judge' ? ' (judge)' : ''}`,
+          label: `Model ${s + 1}${p.role === 'judge' ? ' (judge)' : ''}`,
           vote: v,
           weight: weighted ? ROLE_WEIGHTS[p.role] : 1,
         });
@@ -679,8 +669,7 @@ end failed: ${err instanceof Error ? err.message : String(err)}`,
         {participants.map((p, s) => {
           const pane = panes[s] ?? blankPane();
           return (
-     
-       <div className="gf-pane" key={s}>
+            <div className="gf-pane" key={s}>
               <div className="gf-pane-header">
                 <span className="gf-row" style={{ gap: 6 }}>
                   <span
@@ -723,8 +712,7 @@ end failed: ${err instanceof Error ? err.message : String(err)}`,
                   disabled={debateLocked}
                   onChange={(e) => updatePane(s, { input: e.target.value })}
                   onKeyDown={(e) => {
-           
-         if (e.key === 'Enter') void sendPane(s);
+                    if (e.key === 'Enter') void sendPane(s);
                   }}
                 />
                 <button
@@ -777,8 +765,7 @@ end failed: ${err instanceof Error ? err.message : String(err)}`,
               <div className="gf-row" style={{ gap: 6, flexWrap: 'wrap' }}>
                 <span className="gf-muted" style={{ fontSize: 12 }}>
                   Your vote:
-    
-            </span>
+                </span>
                 {participants.map((_, i) => (
                   <button
                     key={i}
@@ -826,8 +813,7 @@ end failed: ${err instanceof Error ? err.message : String(err)}`,
       <WinnerDialog
         open={winnerOpen}
         count={participants.length}
-        onSubmit={declareWinne
-r}
+        onSubmit={declareWinner}
         onCancel={skipWinner}
       />
     </div>

@@ -63,8 +63,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
     let icon = tauri::image::Image::from_path(&icon_path)?;
 
-    let show = MenuItem::with_id(app, "show", "Show", true, None::<&
-str>)?;
+    let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
@@ -123,8 +122,7 @@ fn main() {
             window_set_compact,
             os_info::detect_environment,
             settings::settings_save_prompts,
-            settings::settings_load_prom
-pts,
+            settings::settings_load_prompts,
             settings::settings_set,
             settings::settings_get,
             // Phase 2 — providers + secrets
@@ -179,8 +177,7 @@ pts,
             git::git_push,
             // Phase 5 — agents / builder state machine
             agents::agent_list,
-            agents::run_star
-t,
+            agents::run_start,
             agents::run_status,
             agents::run_cancel,
             agents::run_transition,
@@ -237,7 +234,6 @@ t,
             build::artifact_get,
             build::artifact_verify,
             build::artifact_export,
-    
             build::release_create,
             // Phase 9 — security
             security::constitution_text,

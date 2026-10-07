@@ -49,8 +49,7 @@ const DEFAULT_PROMPTS: Record<string, string> = {
   'agent.supervisor':
     'You are the Supervisor of the Guild Foundry AI builder. You coordinate six specialist agents (architect, frontend, backend, qa, security) to build what the user asked for. Keep plans small, concrete, and ordered. Reply with JSON only when asked for JSON.',
   'agent.architect':
-    'You are the Architect. Turn approved requirements into a concrete system architecture: components, data flow, and interfaces. Record each significant choice as an ADR (title, context, decision, c
-onsequences). Be specific and minimal.',
+    'You are the Architect. Turn approved requirements into a concrete system architecture: components, data flow, and interfaces. Record each significant choice as an ADR (title, context, decision, consequences). Be specific and minimal.',
   'agent.frontend':
     'You are the Frontend / Application Engineer. Implement user-facing code exactly per the approved architecture. Prefer simple, maintainable code.',
   'agent.backend':
@@ -101,8 +100,7 @@ async function transition(cfg: LoopConfig, to: BuilderState, note = ''): Promise
 }
 
 function checkStop(cfg: LoopConfig): void {
-  if (cfg.shouldStop()) throw new Error('run stopped by user'
-);
+  if (cfg.shouldStop()) throw new Error('run stopped by user');
 }
 
 function parseJsonArray(raw: string): PlanTask[] {
@@ -158,7 +156,6 @@ async function awaitApproval(cfg: LoopConfig, approvalId: string): Promise<boole
 }
 
 /** Ask for human approval when the gate fires for this mode; returns true if we may proceed. */
-
 async function gate(
   cfg: LoopConfig,
   kind: string,
@@ -219,8 +216,7 @@ async function executeTask(cfg: LoopConfig, task: TaskRow, plan: PlanTask): Prom
         output = typeof res === 'string' ? res : JSON.stringify(res);
         cfg.onLog('  ✓ tool ok', 'ok');
         await invoke('agent_task_update', {
-          task_id: t
-ask.id,
+          task_id: task.id,
           tool_calls: JSON.stringify([{ tool: plan.tool, args: plan.tool_args ?? {}, at: new Date().toISOString() }]),
         });
       } catch (err) {
@@ -274,8 +270,7 @@ export async function runAgentLoop(cfg: LoopConfig): Promise<void> {
   });
   let state = status.state as BuilderState;
   cfg.onStateChange(state);
-  cfg.onLog(`run ${cfg.runId.slice(0, 8)} resumed at ${state} (mode ${
-cfg.mode})`, 'gold');
+  cfg.onLog(`run ${cfg.runId.slice(0, 8)} resumed at ${state} (mode ${cfg.mode})`, 'gold');
 
   // ---- DISCOVERY → REQUIREMENTS_ANALYSIS: supervisor drafts requirements ----
   if (state === 'DISCOVERY') {
@@ -321,8 +316,7 @@ cfg.mode})`, 'gold');
   if (state === 'ARCHITECTURE') {
     checkStop(cfg);
     const req = await invoke<{ doc_json: string }>('requirements_get', { run_id: cfg.runId }).catch(
-      () => ({ doc_json: JSON.stringify({ summary: cfg.
-goal }) }),
+      () => ({ doc_json: JSON.stringify({ summary: cfg.goal }) }),
     );
     const arch = await askAgent(
       cfg,
@@ -372,8 +366,7 @@ goal }) }),
       [
         {
           role: 'user',
-          content: `Goal: "${cfg.goal}".\nBreak the implementation into a DAG of tasks. Reply with ONLY a JSON array of tasks, each: {"agent": "frontend"|"backend"|"qa"|"security"|"architect", "title": string, "priority": "low"|"normal"|"high"|"critical", "depends_on": [0-based indices of EARLIER ta
-sks in this array only — no forward or circular references], "instructions": string, "tool": optional tool name to call via tool_execute, "tool_args": optional object, "gate_kind": optional approval gate kind when the step is risky}. Keep it to at most 12 tasks.`,
+          content: `Goal: "${cfg.goal}".\nBreak the implementation into a DAG of tasks. Reply with ONLY a JSON array of tasks, each: {"agent": "frontend"|"backend"|"qa"|"security"|"architect", "title": string, "priority": "low"|"normal"|"high"|"critical", "depends_on": [0-based indices of EARLIER tasks in this array only — no forward or circular references], "instructions": string, "tool": optional tool name to call via tool_execute, "tool_args": optional object, "gate_kind": optional approval gate kind when the step is risky}. Keep it to at most 12 tasks.`,
         },
       ],
       'supervisor',
@@ -420,8 +413,7 @@ sks in this array only — no forward or circular references], "instructions": s
     state = 'IMPLEMENTATION';
   }
 
-  // ---- IMPLEMENTATION: execute the DAG in dependency order --
---
+  // ---- IMPLEMENTATION: execute the DAG in dependency order ----
   if (state === 'IMPLEMENTATION') {
     checkStop(cfg);
     const tasks = await invoke<TaskRow[]>('agent_task_list', { run_id: cfg.runId });
@@ -464,8 +456,7 @@ sks in this array only — no forward or circular references], "instructions": s
       throw new Error(`${remaining.length} task(s) could not run — unmet dependencies or deadlock`);
     }
     await transition(cfg, 'BUILDING', 'all tasks done');
-    state = 'BUILDIN
-G';
+    state = 'BUILDING';
   }
 
   // ---- BUILDING → TESTING → SECURITY_REVIEW: agent verification passes ----
@@ -547,8 +538,7 @@ G';
       let plan: PlanTask = { agent: t.agent as PlanTask['agent'], title: t.title, instructions: '' };
       try {
         const inputs = JSON.parse(t.inputs || '{}') as Record<string, unknown>;
-     
-   plan.instructions = String(inputs.instructions ?? '');
+        plan.instructions = String(inputs.instructions ?? '');
       } catch {
         /* defaults */
       }
@@ -599,8 +589,7 @@ G';
     const ok = await gate(cfg, 'releases', 'Approve the release of this build.', { phase: 'release' });
     if (!ok) throw new Error('release denied by human');
     await transition(cfg, 'RELEASED', 'released');
- 
-   state = 'RELEASED';
+    state = 'RELEASED';
   }
 
   cfg.onLog('run RELEASED — done', 'ok');
