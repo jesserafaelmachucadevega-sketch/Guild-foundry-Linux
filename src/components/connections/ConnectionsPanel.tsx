@@ -18,10 +18,15 @@ interface Props {
 
 type AuthKind = 'oauth' | 'bearer' | 'builtin' | 'none';
 
+type ConnectorCategory = 'Google' | 'Microsoft 365' | 'Social media' | 'More services';
+
+const CATEGORY_ORDER: ConnectorCategory[] = ['Google', 'Microsoft 365', 'Social media', 'More services'];
+
 interface ConnectorTemplate {
   id: string;
   name: string;
   tagline: string;
+  category: ConnectorCategory;
   auth: AuthKind;
   /** Prefilled server URL; empty means the user pastes it from a registry. */
   urlHint: string;
@@ -37,11 +42,23 @@ interface ConnectorTemplate {
   note?: string;
 }
 
+const GOOGLE_OAUTH = {
+  authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenUrl: 'https://oauth2.googleapis.com/token',
+  redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+};
+const MS_OAUTH = {
+  authorizationUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+  tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+  redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+};
+
 const TEMPLATES: ConnectorTemplate[] = [
   {
     id: 'gmail',
     name: 'Gmail',
     tagline: 'Let the agent read and send your email.',
+    category: 'Google',
     auth: 'oauth',
     urlHint: '',
     urlPlaceholder: 'Paste your Gmail MCP server URL (see starter pack doc)',
@@ -61,6 +78,7 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'outlook',
     name: 'Outlook',
     tagline: 'Let the agent read and send your Outlook mail.',
+    category: 'Microsoft 365',
     auth: 'oauth',
     urlHint: '',
     urlPlaceholder: 'Paste your Outlook MCP server URL (see starter pack doc)',
@@ -79,6 +97,7 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'gcal',
     name: 'Google Calendar',
     tagline: 'Let the agent see and manage your schedule.',
+    category: 'Google',
     auth: 'oauth',
     urlHint: '',
     urlPlaceholder: 'Paste your Google Calendar MCP server URL',
@@ -97,6 +116,7 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'github',
     name: 'GitHub',
     tagline: 'Repos, issues, PRs, and code search for the agent.',
+    category: 'More services',
     auth: 'bearer',
     urlHint: 'https://api.githubcopilot.com/mcp/',
     urlPlaceholder: 'MCP server URL (verify it is current)',
@@ -108,6 +128,7 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'websearch',
     name: 'Web Search',
     tagline: 'Fresh information on demand — how the agent stays current.',
+    category: 'More services',
     auth: 'bearer',
     urlHint: '',
     urlPlaceholder: 'Paste your search MCP server URL (Brave, Firecrawl…)',
@@ -119,6 +140,7 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'youtube',
     name: 'YouTube',
     tagline: 'Search videos and pull transcripts — look up anything, read it instead of watching.',
+    category: 'More services',
     auth: 'bearer',
     urlHint: '',
     urlPlaceholder: 'Paste your YouTube MCP server URL (see starter pack doc)',
@@ -130,6 +152,7 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'music',
     name: 'Music Generation',
     tagline: 'Have the agent compose full songs — vocals, lyrics, any genre.',
+    category: 'More services',
     auth: 'bearer',
     urlHint: '',
     urlPlaceholder: 'Paste your music MCP server URL (see starter pack doc)',
@@ -141,10 +164,286 @@ const TEMPLATES: ConnectorTemplate[] = [
     id: 'browser',
     name: 'Browser Automation',
     tagline: 'Give the agent a real Chromium: click, type, and read any website — no API needed.',
+    category: 'More services',
     auth: 'none',
     urlHint: '',
     urlPlaceholder: 'Your Playwright MCP server URL (http://localhost:PORT/mcp)',
     note: 'Run the Playwright MCP server with HTTP transport (keeps the app install lean — no bundled Chromium), then paste its URL. The agent can use any site, and you watch via screenshots in the activity trace.',
+  },
+  {
+    id: 'drive',
+    name: 'Google Drive',
+    tagline: 'Let the agent read and organize your Drive files.',
+    category: 'Google',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Google Drive MCP server URL',
+    oauth: { ...GOOGLE_OAUTH, scopes: [
+      { value: 'https://www.googleapis.com/auth/drive.readonly', label: 'Read files', recommended: true },
+      { value: 'https://www.googleapis.com/auth/drive', label: 'Read + write files' },
+    ] },
+    note: 'Same Google Cloud OAuth client as Gmail works here. Start read-only.',
+  },
+  {
+    id: 'photos',
+    name: 'Google Photos',
+    tagline: 'Let the agent find and describe your photos.',
+    category: 'Google',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Google Photos MCP server URL',
+    oauth: { ...GOOGLE_OAUTH, scopes: [
+      { value: 'https://www.googleapis.com/auth/photoslibrary.readonly', label: 'View library', recommended: true },
+      { value: 'https://www.googleapis.com/auth/photoslibrary.appendonly', label: 'Add photos' },
+    ] },
+  },
+  {
+    id: 'docs',
+    name: 'Google Docs',
+    tagline: 'Let the agent read and draft documents.',
+    category: 'Google',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Google Docs MCP server URL',
+    oauth: { ...GOOGLE_OAUTH, scopes: [
+      { value: 'https://www.googleapis.com/auth/documents.readonly', label: 'Read documents', recommended: true },
+      { value: 'https://www.googleapis.com/auth/documents', label: 'Read + write documents' },
+    ] },
+  },
+  {
+    id: 'slides',
+    name: 'Google Slides',
+    tagline: 'Let the agent read and build presentations.',
+    category: 'Google',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Google Slides MCP server URL',
+    oauth: { ...GOOGLE_OAUTH, scopes: [
+      { value: 'https://www.googleapis.com/auth/presentations.readonly', label: 'Read presentations', recommended: true },
+      { value: 'https://www.googleapis.com/auth/presentations', label: 'Read + write presentations' },
+    ] },
+  },
+  {
+    id: 'sheets',
+    name: 'Google Sheets',
+    tagline: 'Let the agent read and update spreadsheets.',
+    category: 'Google',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Google Sheets MCP server URL',
+    oauth: { ...GOOGLE_OAUTH, scopes: [
+      { value: 'https://www.googleapis.com/auth/spreadsheets.readonly', label: 'Read spreadsheets', recommended: true },
+      { value: 'https://www.googleapis.com/auth/spreadsheets', label: 'Read + write spreadsheets' },
+    ] },
+  },
+  {
+    id: 'maps',
+    name: 'Google Maps',
+    tagline: 'Places, directions, and local search for the agent.',
+    category: 'Google',
+    auth: 'bearer',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Maps MCP server URL',
+    bearerLabel: 'Google Maps Platform API key',
+    bearerPlaceholder: 'Maps API key',
+    note: 'Key from Google Cloud Console with the Maps APIs enabled.',
+  },
+  {
+    id: 'onedrive',
+    name: 'OneDrive & Office',
+    tagline: 'Word, Excel, and PowerPoint files via Microsoft Graph.',
+    category: 'Microsoft 365',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Microsoft 365 MCP server URL',
+    oauth: { ...MS_OAUTH, scopes: [
+      { value: 'Files.Read', label: 'Read files', recommended: true },
+      { value: 'Files.ReadWrite', label: 'Read + write files' },
+    ] },
+    note: 'One connector covers Word, Excel, and PowerPoint — they are all Graph files. Same Entra app as Outlook works.',
+  },
+  {
+    id: 'outlook-calendar',
+    name: 'Outlook Calendar',
+    tagline: 'Let the agent see and manage your Outlook calendar.',
+    category: 'Microsoft 365',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Outlook Calendar MCP server URL',
+    oauth: { ...MS_OAUTH, scopes: [
+      { value: 'Calendars.Read', label: 'Read calendar', recommended: true },
+      { value: 'Calendars.ReadWrite', label: 'Read + write calendar' },
+    ] },
+  },
+  {
+    id: 'onenote',
+    name: 'OneNote',
+    tagline: 'Let the agent read and write your notebooks.',
+    category: 'Microsoft 365',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your OneNote MCP server URL',
+    oauth: { ...MS_OAUTH, scopes: [
+      { value: 'Notes.Read', label: 'Read notebooks', recommended: true },
+      { value: 'Notes.ReadWrite', label: 'Read + write notebooks' },
+    ] },
+  },
+  {
+    id: 'x',
+    name: 'X',
+    tagline: 'Let the agent read timelines and post.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your X MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://twitter.com/i/oauth2/authorize',
+      tokenUrl: 'https://api.twitter.com/2/oauth2/token',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'tweet.read users.read', label: 'Read posts and profiles', recommended: true },
+        { value: 'tweet.write', label: 'Post' },
+        { value: 'offline.access', label: 'Stay signed in' },
+      ],
+    },
+    note: 'Needs an app in the X Developer Portal.',
+  },
+  {
+    id: 'facebook',
+    name: 'Facebook',
+    tagline: 'Let the agent read and post on your behalf.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Facebook MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://www.facebook.com/dialog/oauth',
+      tokenUrl: 'https://graph.facebook.com/oauth/access_token',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'public_profile', label: 'Basic profile', recommended: true },
+        { value: 'email', label: 'Email address' },
+      ],
+    },
+    note: 'App ID from Meta for Developers.',
+  },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    tagline: 'Let the agent read your feed and publish.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Instagram MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://www.facebook.com/dialog/oauth',
+      tokenUrl: 'https://graph.facebook.com/oauth/access_token',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'instagram_basic', label: 'Read profile and media', recommended: true },
+        { value: 'instagram_content_publish', label: 'Publish posts' },
+      ],
+    },
+    note: 'Runs through Facebook Login; publishing needs a business or creator account.',
+  },
+  {
+    id: 'linkedin',
+    name: 'LinkedIn',
+    tagline: 'Let the agent read your network and post updates.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your LinkedIn MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://www.linkedin.com/oauth/v2/authorization',
+      tokenUrl: 'https://www.linkedin.com/oauth2/v2/accessToken',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'openid profile email', label: 'Sign in and read profile', recommended: true },
+        { value: 'w_member_social', label: 'Post updates' },
+      ],
+    },
+    note: 'Client ID from a LinkedIn Developer app.',
+  },
+  {
+    id: 'tiktok',
+    name: 'TikTok',
+    tagline: 'Let the agent read your profile and upload videos.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your TikTok MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://www.tiktok.com/v2/auth/authorize/',
+      tokenUrl: 'https://open.tiktokapis.com/v2/auth/token/',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'user.info.basic', label: 'Read basic profile', recommended: true },
+        { value: 'video.upload', label: 'Upload videos' },
+      ],
+    },
+    note: 'Client key from the TikTok Developer portal.',
+  },
+  {
+    id: 'reddit',
+    name: 'Reddit',
+    tagline: 'Let the agent read subreddits and post.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Reddit MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://www.reddit.com/api/v1/authorize',
+      tokenUrl: 'https://www.reddit.com/api/v1/access_token',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'read identity', label: 'Read posts and profile', recommended: true },
+        { value: 'submit', label: 'Post and comment' },
+      ],
+    },
+    note: 'Create an app at reddit.com/prefs/apps (web or script type).',
+  },
+  {
+    id: 'discord',
+    name: 'Discord',
+    tagline: 'Let the agent read servers and send messages.',
+    category: 'Social media',
+    auth: 'oauth',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Discord MCP server URL',
+    oauth: {
+      authorizationUrl: 'https://discord.com/oauth2/authorize',
+      tokenUrl: 'https://discord.com/api/oauth2/token',
+      redirectUri: 'http://127.0.0.1:18793/oauth/callback',
+      scopes: [
+        { value: 'identify guilds', label: 'Profile and servers', recommended: true },
+      ],
+    },
+    note: 'For automating a server, a bot token through a Discord MCP server is the usual path.',
+  },
+  {
+    id: 'adobe-pdf',
+    name: 'Adobe PDF',
+    tagline: 'Let the agent read, split, merge, and convert PDFs.',
+    category: 'More services',
+    auth: 'bearer',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Adobe PDF MCP server URL',
+    bearerLabel: 'Adobe PDF Services API key',
+    bearerPlaceholder: 'Adobe API key',
+    note: 'Key from the Adobe Developer Console (PDF Services API).',
+  },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    tagline: 'Models, datasets, and inference for the agent.',
+    category: 'More services',
+    auth: 'bearer',
+    urlHint: '',
+    urlPlaceholder: 'Paste your Hugging Face MCP server URL',
+    bearerLabel: 'Hugging Face token',
+    bearerPlaceholder: 'hf_…',
+    note: 'Token from huggingface.co/settings/tokens. Read-only scopes to start.',
   },
 ];
 
@@ -553,8 +852,11 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
         </div>
 
         <h3 className="conn-section">Connect a service</h3>
-        <div className="conn-grid">
-          {TEMPLATES.map((t) => {
+        {CATEGORY_ORDER.map((cat) => (
+          <div key={cat}>
+            <h4 className="conn-category">{cat}</h4>
+            <div className="conn-grid">
+              {TEMPLATES.filter((t) => t.category === cat).map((t) => {
             const existing = servers.find(
               (s) => s.name.toLowerCase() === t.name.toLowerCase(),
             );
@@ -582,10 +884,12 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
                     Connect
                   </button>
                 )}
-              </div>
-            );
-          })}
-        </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
 
         <h3 className="conn-section">Connected ({servers.length})</h3>
         <div className="conn-mcp-perm">
