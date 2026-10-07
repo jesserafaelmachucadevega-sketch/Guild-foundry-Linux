@@ -100,11 +100,19 @@ discipline.
 - Artifacts persist with the conversation — no separate save step.
 
 
-### 4.7 Browser-use tool (new build)
-For services without usable APIs (Replit, Lovable, arbitrary web apps): a tool that
-drives a real Chromium instance (click, type, read). This is the largest new piece of
-work in the connector story. Sign-in flows reuse the Secure Vault pattern — the agent
-never sees credentials.
+### 4.7 Browser-use tool (MCP-hosted, not bundled)
+Decision (2026-10-07): no bundled Chromium — it would bloat the install. Browser
+automation comes from a hosted Playwright MCP server connected via the Connections
+tab, keeping the app lean. A native CDP driver remains a future option for tighter
+permission integration, but it is not on the roadmap while the MCP path works.
+
+### 4.8 Watching the agent browse
+Yes — the user can watch the agent work a page, the same way they watch an
+assistant's browser session today. Mechanism: every browser tool call returns a
+screenshot; the Agent tab's activity trace pane renders them as a filmstrip in
+action order, which reads as a live feed. True CDP screencast streaming is the
+fancier future version; per-action screenshots deliver ~90% of the experience
+with no extra architecture.
 
 ## 5. Tool-Call Adapter Registry (new subsystem)
 
