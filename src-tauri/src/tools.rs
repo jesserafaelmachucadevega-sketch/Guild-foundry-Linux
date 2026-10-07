@@ -245,12 +245,13 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "media.speak".into(),
-            description: "Speak text aloud via Fal TTS. The audio is saved locally and the result carries its file path; the harness plays it. Use when the user wants voice output, or when speech mode is on. Costs per character (~$0.025/1000 chars)."
+            description: "Speak text aloud via Fal Kokoro TTS (natural human voices). The audio is saved locally and the result carries its file path; the harness plays it. Language: en (default), es, fr — routes to the matching Kokoro endpoint. Costs per character (~$0.025/1000 chars)."
                 .into(),
             schema: schema(
                 serde_json::json!({
                     "text": { "type": "string", "description": "Text to speak (max 5000 chars)." },
-                    "voice": { "type": "string", "description": "Voice id override; default voice if omitted." }
+                    "voice": { "type": "string", "description": "Voice id override; default voice if omitted." },
+                    "language": { "type": "string", "description": "en, es, or fr. Defaults to the media.tts_language setting, then en." }
                 }),
                 &["text"],
             ),
@@ -942,7 +943,8 @@ pub fn tool_execute(
         "media.speak" => {
             let text = arg_str(&args, "text")?;
             let voice = args.get("voice").and_then(|v| v.as_str());
-            crate::media::speak(&app, &text, voice)
+            let language = args.get("language").and_then(|v| v.as_str());
+            crate::media::speak(&app, &text, voice, language)
         }
         "artifact.create" => ad_create_artifact(&args).map(|a| serde_json::json!({ "artifact": a })),
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
