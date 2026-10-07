@@ -16,7 +16,7 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-type AuthKind = 'oauth' | 'bearer' | 'builtin';
+type AuthKind = 'oauth' | 'bearer' | 'builtin' | 'none';
 
 interface ConnectorTemplate {
   id: string;
@@ -136,6 +136,15 @@ const TEMPLATES: ConnectorTemplate[] = [
     bearerLabel: 'API key',
     bearerPlaceholder: 'AIMLAPI / PiAPI key',
     note: 'AIMLAPI wraps Suno, Udio and more behind one key. Suno is the strongest for full songs with vocals (v6, downloads on paid plans).',
+  },
+  {
+    id: 'browser',
+    name: 'Browser Automation',
+    tagline: 'Give the agent a real Chromium: click, type, and read any website — no API needed.',
+    auth: 'none',
+    urlHint: '',
+    urlPlaceholder: 'Your Playwright MCP server URL (http://localhost:PORT/mcp)',
+    note: 'Run the Playwright MCP server with HTTP transport (keeps the app install lean — no bundled Chromium), then paste its URL. The agent can use any site, and you watch via screenshots in the activity trace.',
   },
 ];
 
@@ -558,7 +567,7 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
                     <span className="conn-badge conn-badge-ok">Connected</span>
                   ) : (
                     <span className="conn-badge">
-                      {t.auth === 'oauth' ? 'OAuth' : t.auth === 'bearer' ? 'API key' : ''}
+                      {t.auth === 'oauth' ? 'OAuth' : t.auth === 'bearer' ? 'API key' : t.auth === 'none' ? 'No sign-in' : ''}
                     </span>
                   )}
                 </div>
