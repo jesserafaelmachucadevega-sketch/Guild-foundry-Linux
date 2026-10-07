@@ -44,7 +44,7 @@ const PROTOCOL_VERSION: &str = "2025-06-18";
 const CLIENT_NAME: &str = "guild-foundry-ai";
 const CLIENT_VERSION: &str = "0.1.0";
 
-const PERM_DOMAINS: [&str; 8] = [
+const PERM_DOMAINS: [&str; 9] = [
     "filesystem",
     "network",
     "shell",
@@ -53,6 +53,7 @@ const PERM_DOMAINS: [&str; 8] = [
     "browser",
     "credentials",
     "external_apis",
+    "media",
 ];
 const PERM_LEVELS: [&str; 5] = [
     "always_allow",
