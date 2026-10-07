@@ -31,6 +31,247 @@ pub const KNOWN_VIDEO_MODELS: &[(&str, &str)] = &[
     ("fal-ai/kling-video/v3/pro/text-to-video", "premium — native audio, camera control"),
 ];
 
+pub const DEFAULT_STT_MODEL: &str = "fal-ai/whisper";
+/// Kokoro — natural human-sounding TTS (no robotic browser voice).
+pub const DEFAULT_TTS_MODEL: &str = "fal-ai/kokoro/american-english";
+
+/// Upload a local file to Fal storage; returns the public file URL.
+/// Two-step flow: initiate → PUT bytes to the upload URL.
+async fn fal_upload(
+    client: &reqwest::Client,
+    key: &str,
+    path: &std::path::Path,
+    content_type: &str,
+) -> Result<String, String> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("upload.bin");
+    let init: serde_json::Value = post_json(
+        client,
+        "https://rest.alpha.fal.ai/storage/upload/initiate",
+        key,
+        &serde_json::json!({ "file_name": file_name, "content_type": content_type }),
+    )
+    .await?;
+    let upload_url = init
+        .get("upload_url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Fal upload initiate returned no upload_url".to_string())?;
+    let file_url = init
+        .get("file_url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Fal upload initiate returned no file_url".to_string())?
+        .to_string();
+    let bytes = std::fs::read(path).map_err(|e| format!("read failed: {}", e))?;
+    let resp = client
+        .put(upload_url)
+        .header("Content-Type", content_type)
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|e| format!("Fal upload failed: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Fal upload error: {}", resp.status()));
+    }
+    Ok(file_url)
+}
+
+fn fal_key() -> Result<String, String> {
+    crate::secrets::secret_get(FAL_KEYRING_KEY.to_string())?
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| {
+            "No Fal API key configured. Add one under Connections > Media generation.".to_string()
+        })
+}
+
+/// Speech-to-text via Fal Whisper. Accepts a public audio URL or a local file
+/// path (uploaded to Fal storage first). 99+ languages, auto-detected.
+pub fn transcribe(
+    audio_url: Option<&str>,
+    audio_path: Option<&str>,
+    language: Option<&str>,
+    task: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let key = fal_key()?;
+    let task = task.unwrap_or("transcribe");
+    if task != "transcribe" && task != "translate" {
+        return Err("task must be transcribe or translate".to_string());
+    }
+
+    tauri::async_runtime::block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| format!("HTTP client failed: {}", e))?;
+
+        let url = match (audio_url, audio_path) {
+            (Some(u), _) if !u.trim().is_empty() => u.trim().to_string(),
+            (_, Some(p)) => {
+                let path = std::path::Path::new(p);
+                if !path.is_file() {
+                    return Err(format!("audio file not found: {}", p));
+                }
+                let ct = match path.extension().and_then(|e| e.to_str()) {
+                    Some("mp3") => "audio/mpeg",
+                    Some("wav") => "audio/wav",
+                    Some("m4a") => "audio/mp4",
+                    Some("ogg") => "audio/ogg",
+                    _ => "audio/webm",
+                };
+                fal_upload(&client, &key, path, ct).await?
+            }
+            _ => return Err("provide audio_url or audio_path".to_string()),
+        };
+
+        let mut body = serde_json::json!({
+            "audio_url": url,
+            "task": task,
+            "chunk_level": "segment",
+        });
+        if let Some(l) = language {
+            body["language"] = serde_json::json!(l);
+        }
+        let res = post_json(
+            &client,
+            &format!("https://fal.run/{}", DEFAULT_STT_MODEL),
+            &key,
+            &body,
+        )
+        .await?;
+        Ok(serde_json::json!({
+            "text": res.get("text").cloned().unwrap_or(serde_json::Value::Null),
+            "chunks": res.get("chunks").cloned().unwrap_or(serde_json::Value::Null),
+            "languages": res.get("inferred_languages").cloned().unwrap_or(serde_json::Value::Null),
+        }))
+    })
+}
+
+/// Text-to-speech via Fal. Returns the saved local MP3 path; the harness plays it.
+pub fn speak(
+    app: &tauri::AppHandle,
+    text: &str,
+    voice: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    if text.trim().is_empty() {
+        return Err("text must not be empty".to_string());
+    }
+    if text.len() > 5000 {
+        return Err("text too long for one call (max 5000 chars)".to_string());
+    }
+    let key = fal_key()?;
+
+    tauri::async_runtime::block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(180))
+            .build()
+            .map_err(|e| format!("HTTP client failed: {}", e))?;
+
+        let mut body = serde_json::json!({ "text": text });
+        if let Some(v) = voice {
+            body["voice"] = serde_json::json!(v);
+        }
+        let res = post_json(
+            &client,
+            &format!("https://fal.run/{}", DEFAULT_TTS_MODEL),
+            &key,
+            &body,
+        )
+        .await?;
+        let audio_url = res
+            .get("audio")
+            .and_then(|a| a.get("url"))
+            .and_then(|u| u.as_str())
+            .ok_or_else(|| "Fal TTS returned no audio URL".to_string())?
+            .to_string();
+
+        let bytes = client
+            .get(&audio_url)
+            .send()
+            .await
+            .map_err(|e| format!("audio download failed: {}", e))?
+            .bytes()
+            .await
+            .map_err(|e| format!("audio read failed: {}", e))?;
+
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("media");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let fname = format!("tts-{}.mp3", chrono::Utc::now().format("%Y%m%dT%H%M%S%3f"));
+        let path = dir.join(&fname);
+        std::fs::write(&path, &bytes).map_err(|e| format!("save failed: {}", e))?;
+
+        Ok(serde_json::json!({
+            "path": path.to_string_lossy(),
+            "url": audio_url,
+            "chars": text.len(),
+        }))
+    })
+}
+
+/// Frontend mic flow: base64 audio from MediaRecorder → temp file → transcribe.
+/// Returns the transcript text directly (not a tool call).
+#[tauri::command]
+pub fn media_transcribe_mic(
+    app: tauri::AppHandle,
+    audio_base64: String,
+    content_type: String,
+    language: Option<String>,
+) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(audio_base64.trim())
+        .map_err(|e| format!("bad base64 audio: {}", e))?;
+    if bytes.is_empty() || bytes.len() > 25 * 1024 * 1024 {
+        return Err("audio must be 1 byte–25 MB".to_string());
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("media")
+        .join("mic");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let ext = match content_type.as_str() {
+        "audio/mpeg" => "mp3",
+        "audio/wav" => "wav",
+        "audio/mp4" => "m4a",
+        "audio/ogg" => "ogg",
+        _ => "webm",
+    };
+    let path = dir.join(format!(
+        "mic-{}.{}",
+        chrono::Utc::now().format("%Y%m%dT%H%M%S%3f"),
+        ext
+    ));
+    std::fs::write(&path, &bytes).map_err(|e| format!("save failed: {}", e))?;
+    let out = transcribe(None, Some(&path.to_string_lossy()), language.as_deref(), None)?;
+    // Best-effort cleanup; the transcript is what matters.
+    let _ = std::fs::remove_file(&path);
+    out.get("text")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "transcription returned no text".to_string())
+}
+
+/// Frontend "read aloud" flow: text → speech → local path for playback.
+#[tauri::command]
+pub fn media_speak_text(
+    app: tauri::AppHandle,
+    text: String,
+    voice: Option<String>,
+) -> Result<String, String> {
+    let out = speak(&app, &text, voice.as_deref())?;
+    out.get("path")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "TTS returned no path".to_string())
+}
+
 async fn post_json(
     client: &reqwest::Client,
     url: &str,
@@ -211,13 +452,32 @@ pub fn generate_video(
                     request_id
                 ));
             }
-            let resp = client
-                .get(&status_url)
-                .header("Authorization", format!("Key {}", key))
-                .send()
-                .await
-                .map_err(|e| format!("Fal status failed: {}", e))?;
-            let stext = resp.text().await.map_err(|e| format!("Fal read failed: {}", e))?;
+            // Status endpoint: GET per docs, but some deployments 405 — fall back to POST.
+            let stext = {
+                let get = client
+                    .get(&status_url)
+                    .header("Authorization", format!("Key {}", key))
+                    .send()
+                    .await;
+                let use_post = matches!(&get, Ok(r) if r.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED);
+                if use_post {
+                    client
+                        .post(&status_url)
+                        .header("Authorization", format!("Key {}", key))
+                        .json(&serde_json::json!({}))
+                        .send()
+                        .await
+                        .map_err(|e| format!("Fal status failed: {}", e))?
+                        .text()
+                        .await
+                        .map_err(|e| format!("Fal read failed: {}", e))?
+                } else {
+                    get.map_err(|e| format!("Fal status failed: {}", e))?
+                        .text()
+                        .await
+                        .map_err(|e| format!("Fal read failed: {}", e))?
+                }
+            };
             let status: serde_json::Value =
                 serde_json::from_str(&stext).map_err(|e| format!("Fal bad JSON: {}", e))?;
             let st = status.get("status").and_then(|v| v.as_str()).unwrap_or("");
