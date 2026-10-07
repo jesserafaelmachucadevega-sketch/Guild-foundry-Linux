@@ -13,6 +13,8 @@ import RunHistory from './components/builder/RunHistory';
 import { ToolPanel } from './components/tools/ToolPanel';
 import { McpPanel } from './components/mcp/McpPanel';
 import { ConnectionsPanel } from './components/connections/ConnectionsPanel';
+import { ScheduledPanel } from './components/scheduler/ScheduledPanel';
+import { SchedulerRunner } from './components/scheduler/SchedulerRunner';
 import { MemoryPanel } from './components/memory/MemoryPanel';
 import { KnowledgeBridge } from './components/memory/KnowledgeBridge';
 import { ResearchPanel } from './components/memory/ResearchPanel';
@@ -36,6 +38,7 @@ const SECTION_PHASE: Record<NavSection, number> = {
   tools: 6,
   mcp: 7,
   connections: 7,
+  scheduled: 14,
   memory: 10,
   artifacts: 8,
   runs: 5,
@@ -55,6 +58,7 @@ const SECTION_TITLE: Record<NavSection, string> = {
   tools: 'Tools',
   mcp: 'MCP Servers',
   connections: 'Connections',
+  scheduled: 'Scheduled',
   memory: 'Memory',
   artifacts: 'Artifacts',
   runs: 'Runs',
@@ -204,6 +208,7 @@ export default function App(): React.ReactElement {
       pushToast={pushToast}
       connectionState={connectionState}
     >
+      <SchedulerRunner onToast={pushToast} />
       <CrashRecovery
         onToast={pushToast}
         onDecide={(d) => {
@@ -238,6 +243,8 @@ export default function App(): React.ReactElement {
         <McpPanel onToast={pushToast} />
       ) : section === 'connections' ? (
         <ConnectionsPanel onToast={pushToast} />
+      ) : section === 'scheduled' ? (
+        <ScheduledPanel onToast={pushToast} />
       ) : section === 'memory' ? (
         <MemoryTabs />
       ) : section === 'artifacts' ? (
