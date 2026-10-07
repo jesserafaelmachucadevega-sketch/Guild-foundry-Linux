@@ -278,7 +278,21 @@ that reads the result.
    audit, per-connector scopes in `PermissionCenter`.
 5. **Phase E — Browser-use tool** for API-less services (Replit, Lovable).
 
-## 7. Open questions for Jesse
+## 7. Token economy
+
+- **Prompt caching** (built): Anthropic-family requests carry `cache_control`
+  breakpoints after the system prompt and after the last message. The stable prefix
+  (system prompt with tool defs, constitution, quota notice + conversation history)
+  is reused across turns at ~10% of input-token price instead of being reprocessed
+  every turn. OpenAI and Google cache automatically; Ollama has no per-token cost.
+- **Two-tier verbosity** (policy): terse internally (reasoning, tool args), eloquent
+  only in user-facing text. Enforced via the agent system prompt, not code.
+- **Tool-output truncation**: cap file reads and command output; summarize the rest.
+  One uncapped output can cost more than the rest of the run.
+- **Stop conditions**: max turns, no repeated identical tool calls, halt when tool
+  results stop changing the plan.
+
+## 8. Open questions for Jesse
 
 - Which model should be the default pilot for the Agent tab? (DeepSeek via OpenRouter
   is the current recommendation: strong function calling, low cost.)
