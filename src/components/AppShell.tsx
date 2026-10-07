@@ -13,6 +13,7 @@ export type NavSection =
   | 'tools'
   | 'mcp'
   | 'connections'
+  | 'scheduled'
   | 'memory'
   | 'artifacts'
   | 'runs'
@@ -31,6 +32,7 @@ export const NAV_ITEMS: { id: NavSection; label: string; glyph: string; phase: n
   { id: 'tools', label: 'Tools', glyph: 'T', phase: 6 },
   { id: 'mcp', label: 'MCP', glyph: 'X', phase: 7 },
   { id: 'connections', label: 'Conn.', glyph: 'N', phase: 7 },
+  { id: 'scheduled', label: 'Sched.', glyph: 'W', phase: 14 },
   { id: 'memory', label: 'Mem.', glyph: 'E', phase: 10 },
   { id: 'artifacts', label: 'Artif.', glyph: 'A', phase: 8 },
   { id: 'runs', label: 'Runs', glyph: 'R', phase: 5 },
