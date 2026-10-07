@@ -25,6 +25,7 @@ mod providers;
 mod research;
 mod scheduler;
 mod secrets;
+mod avatar;
 mod security;
 mod settings;
 mod terminal;
@@ -286,6 +287,10 @@ fn main() {
             scheduler::scheduler_complete,
             scheduler::scheduler_notify,
             scheduler::scheduler_grant_session,
+            // Avatar: custom uploads + model redesigns
+            avatar::avatar_upload_image,
+            avatar::avatar_set_image,
+            avatar::avatar_clear_custom,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Guild Foundry AI");
