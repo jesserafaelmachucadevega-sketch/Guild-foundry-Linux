@@ -44,7 +44,17 @@ export interface ChatMessage {
   artifacts?: Artifact[];
 }
 
-export type ArtifactKind = 'poll' | 'checklist' | 'slider' | 'card';
+export type ArtifactKind = 'poll' | 'checklist' | 'slider' | 'card' | 'whiteboard' | 'sticky';
+
+export interface WhiteboardNote {
+  id?: string;
+  /** Position as percentage of board width/height (0-100). */
+  x: number;
+  y: number;
+  color?: string;
+  title?: string;
+  body?: string;
+}
 
 export interface Artifact {
   kind: ArtifactKind;
@@ -57,8 +67,12 @@ export interface Artifact {
   min?: number;
   max?: number;
   value?: number;
-  // card
+  // card, sticky
   body?: string;
+  // sticky, whiteboard notes
+  color?: string;
+  // whiteboard
+  notes?: WhiteboardNote[];
 }
 
 export interface AgentConfig {
