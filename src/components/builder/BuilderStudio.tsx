@@ -49,7 +49,9 @@ export default function BuilderStudio() {
   const [historyTick, setHistoryTick] = useState(0);
   const [tab, setTab] = useState<'tasks' | 'requirements' | 'history'>('tasks');
   const [error, setError] = useState('');
-  const [prompts, setPrompts] = useState<Record<string, string>>({});
+  const [projectRoot, setProjectRoot] = useState('');
+  const [prompts, setPrompts] = 
+useState<Record<string, string>>({});
   const stopRef = useRef(false);
   const runningRef = useRef(false);
 
@@ -74,6 +76,11 @@ export default function BuilderStudio() {
       .catch((e: unknown) => logLine(`agent_list: ${e instanceof Error ? e.message : String(e)}`, 'err'));
     invoke<Record<string, string>>('settings_load_prompts')
       .then(setPrompts)
+      .catch(() => undefined);
+    // Default project root (same convention as the Projects panel). Optional:
+    // when empty, the TESTING state skips real test execution.
+    invoke<string>('ws_project_root', { root: null })
+      .then(setProjectRoot)
       .catch(() => undefined);
     getProviders()
       .then((ps) => {
@@ -107,7 +114,8 @@ export default function BuilderStudio() {
         await runAgentLoop({
           runId,
           goal: runGoal,
-          mode: runMode,
+         
+ mode: runMode,
           model: { providerId, modelId },
           getPrompt: (key) => prompts[key] ?? '',
           onLog: logLine,
@@ -118,6 +126,7 @@ export default function BuilderStudio() {
             void refreshRun(runId);
           },
           shouldStop: () => stopRef.current,
+          projectRoot: projectRoot || undefined,
         });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -174,7 +183,8 @@ export default function BuilderStudio() {
       if (found.length === 0) {
         logLine('no interrupted runs to recover', 'gold');
         return;
-      }
+    
+  }
       const r = found[0];
       logLine(`recovering run ${r.id.slice(0, 8)} at ${r.state}`, 'gold');
       setRun(r);
@@ -216,6 +226,14 @@ export default function BuilderStudio() {
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
             />
+            <div className="gf-label" style={{ marginTop: 8 }}>Project root</div>
+            <input
+              className="gf-input"
+              style={{ width: '100%' }}
+              placeholder="/absolute/path/to/project (optional — enables real builds and tests)"
+              value={projectRoot}
+              onChange={(e) => setProjectRoot(e.target.value)}
+            />
             <div className="gf-label" style={{ marginTop: 8 }}>Autonomy mode</div>
             <select className="gf-select" value={mode} onChange={(e) => setMode(e.target.value as RunMode)} style={{ width: '100%' }}>
               {MODES.map((m) => (
@@ -226,7 +244,8 @@ export default function BuilderStudio() {
             <div className="gf-label">Provider</div>
             <select className="gf-select" value={providerId} onChange={(e) => setProviderId(e.target.value)} style={{ width: '100%' }}>
               {providers.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.status})</option>
+                <optio
+n key={p.id} value={p.id}>{p.name} ({p.status})</option>
               ))}
             </select>
             <div className="gf-label" style={{ marginTop: 8 }}>Model</div>
@@ -273,7 +292,8 @@ export default function BuilderStudio() {
             )}
           </div>
 
-          <div className="bld-panel" style={{ marginTop: 12 }}>
+          <div className="bld-panel" style={{ 
+marginTop: 12 }}>
             <h3>Agents ({agents.length})</h3>
             {agents.map((a) => (
               <div key={a.id} style={{ marginBottom: 8 }}>
@@ -317,7 +337,8 @@ export default function BuilderStudio() {
             <h3>Orchestration log</h3>
             <div className="bld-log">
               {log.map((l, i) => (
-                <div key={i} className={l.cls}>
+                <div ke
+y={i} className={l.cls}>
                   <span className="t">[{l.at}]</span> {l.text}
                 </div>
               ))}
