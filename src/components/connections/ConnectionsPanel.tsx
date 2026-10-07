@@ -218,11 +218,17 @@ const IMAGE_MODELS = [
   { id: 'fal-ai/flux-2-pro', label: 'FLUX 2 Pro — ~$0.05/image, highest quality' },
   { id: 'fal-ai/stable-diffusion-xl', label: 'SDXL — ~$0.003/image, cheap drafts' },
 ];
+const VIDEO_MODELS = [
+  { id: 'fal-ai/wan/v2.7/text-to-video', label: 'Wan 2.7 — ~$0.05/sec, budget' },
+  { id: 'fal-ai/veo3.1', label: 'Veo 3.1 — premium, native audio' },
+  { id: 'fal-ai/kling-video/v3/pro/text-to-video', label: 'Kling v3 Pro — premium, camera control' },
+];
 
 function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   const [key, setKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [model, setModel] = useState(IMAGE_MODELS[0].id);
+  const [videoModel, setVideoModel] = useState(VIDEO_MODELS[0].id);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -235,6 +241,11 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     void invoke<string | null>('settings_get', { key: 'media.image_model' })
       .then((v) => {
         if (live && v && IMAGE_MODELS.some((m) => m.id === v)) setModel(v);
+      })
+      .catch(() => {});
+    void invoke<string | null>('settings_get', { key: 'media.video_model' })
+      .then((v) => {
+        if (live && v && VIDEO_MODELS.some((m) => m.id === v)) setVideoModel(v);
       })
       .catch(() => {});
     return () => {
@@ -282,10 +293,21 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     }
   };
 
+  const changeVideoModel = async (id: string) => {
+    const prev = videoModel;
+    setVideoModel(id);
+    try {
+      await invoke('settings_set', { key: 'media.video_model', value: id });
+    } catch (e) {
+      setVideoModel(prev);
+      onToast(errText(e));
+    }
+  };
+
   return (
     <div className="conn-card">
       <div className="conn-card-head">
-        <strong>Image generation</strong>
+        <strong>Media generation</strong>
         {hasKey ? (
           <span className="conn-badge conn-badge-ok">Key saved</span>
         ) : (
@@ -293,9 +315,10 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
         )}
       </div>
       <p className="conn-tagline">
-        Any model — local or frontier — can generate images through one API.
-        The agent calls <span className="conn-mono">media.generate_image</span> with
-        a prompt; Fal renders it and the image appears in the conversation.
+        Any model — local or frontier — can generate images and video through one
+        API. The agent calls <span className="conn-mono">media.generate_image</span> or{' '}
+        <span className="conn-mono">media.generate_video</span> with a prompt; Fal
+        renders it and the result appears in the conversation.
       </p>
       {hasKey ? (
         <button className="gf-btn gf-btn-sm conn-danger" onClick={() => void removeKey()}>
@@ -316,7 +339,7 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
         </div>
       )}
       <label className="gf-label conn-modellabel">
-        <span className="gf-muted conn-small">Model</span>
+        <span className="gf-muted conn-small">Image model</span>
         <select
           className="gf-input"
           value={model}
@@ -329,10 +352,25 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
           ))}
         </select>
       </label>
+      <label className="gf-label conn-modellabel">
+        <span className="gf-muted conn-small">Video model</span>
+        <select
+          className="gf-input"
+          value={videoModel}
+          onChange={(e) => void changeVideoModel(e.target.value)}
+        >
+          {VIDEO_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <PermSelect domain="media" onToast={onToast} />
       <p className="conn-note">
-        Every generation costs real money. Default is Ask every time, so the
-        agent confirms with you before spending.
+        Every generation costs real money — video is per-second, so a 5s premium
+        clip can cost over $1. Default is Ask every time, so the agent confirms
+        with you before spending.
       </p>
     </div>
   );
