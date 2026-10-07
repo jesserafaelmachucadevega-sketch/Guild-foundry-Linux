@@ -26,6 +26,7 @@ mod research;
 mod scheduler;
 mod secrets;
 mod avatar;
+mod suggestions;
 mod security;
 mod settings;
 mod terminal;
@@ -291,6 +292,12 @@ fn main() {
             avatar::avatar_upload_image,
             avatar::avatar_set_image,
             avatar::avatar_clear_custom,
+            // Suggested to-do
+            suggestions::suggestions_list,
+            suggestions::suggestions_recent_labels,
+            suggestions::suggestions_add,
+            suggestions::suggestions_accept,
+            suggestions::suggestions_dismiss,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Guild Foundry AI");
