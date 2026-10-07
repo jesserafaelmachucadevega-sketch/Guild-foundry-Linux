@@ -537,6 +537,15 @@ const TTS_VOICES = [
   { id: 'am_adam', label: 'Adam — deep American male, YouTube narrator' },
   { id: 'bf_emma', label: 'Emma — British female, natural' },
 ];
+const TTS_VOICES_ES = [
+  { id: 'ef_dora', label: 'Dora — Spanish female' },
+  { id: 'em_alex', label: 'Alex — Spanish male' },
+];
+const TTS_LANGUAGES = [
+  { id: 'en', label: 'English' },
+  { id: 'es', label: 'Español' },
+  { id: 'fr', label: 'Français' },
+];
 
 function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   const [key, setKey] = useState('');
@@ -544,6 +553,7 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
   const [model, setModel] = useState(IMAGE_MODELS[0].id);
   const [videoModel, setVideoModel] = useState(VIDEO_MODELS[0].id);
   const [voice, setVoice] = useState(TTS_VOICES[0].id);
+  const [ttsLang, setTtsLang] = useState('en');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -566,6 +576,11 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     void invoke<string | null>('settings_get', { key: 'media.tts_voice' })
       .then((v) => {
         if (live && v && TTS_VOICES.some((m) => m.id === v)) setVoice(v);
+      })
+      .catch(() => {});
+    void invoke<string | null>('settings_get', { key: 'media.tts_language' })
+      .then((v) => {
+        if (live && v && TTS_LANGUAGES.some((m) => m.id === v)) setTtsLang(v);
       })
       .catch(() => {});
     return () => {
@@ -636,6 +651,23 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     }
   };
 
+  const changeTtsLang = async (id: string) => {
+    const prev = ttsLang;
+    setTtsLang(id);
+    // Keep a valid voice for the language.
+    const voices = id === 'es' ? TTS_VOICES_ES : TTS_VOICES;
+    if (!voices.some((m) => m.id === voice)) setVoice(voices[0].id);
+    try {
+      await invoke('settings_set', { key: 'media.tts_language', value: id });
+      await invoke('settings_set', { key: 'media.tts_voice', value: voices[0].id });
+    } catch (e) {
+      setTtsLang(prev);
+      onToast(errText(e));
+    }
+  };
+
+  const ttsVoices = ttsLang === 'es' ? TTS_VOICES_ES : TTS_VOICES;
+
   return (
     <div className="conn-card">
       <div className="conn-card-head">
@@ -699,13 +731,27 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
         </select>
       </label>
       <label className="gf-label conn-modellabel">
+        <span className="gf-muted conn-small">Voice language</span>
+        <select
+          className="gf-input"
+          value={ttsLang}
+          onChange={(e) => void changeTtsLang(e.target.value)}
+        >
+          {TTS_LANGUAGES.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="gf-label conn-modellabel">
         <span className="gf-muted conn-small">Voice</span>
         <select
           className="gf-input"
           value={voice}
           onChange={(e) => void changeVoice(e.target.value)}
         >
-          {TTS_VOICES.map((m) => (
+          {ttsVoices.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}
             </option>
