@@ -29,6 +29,7 @@ mod terminal;
 mod tools;
 mod updater;
 mod workspace;
+mod ratelimit;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -137,6 +138,7 @@ fn main() {
             providers::provider_chat_stream,
             providers::provider_chat_cancel,
             providers::provider_router_suggest,
+            ratelimit::ratelimit_status,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
