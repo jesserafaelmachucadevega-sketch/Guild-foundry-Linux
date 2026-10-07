@@ -12,6 +12,7 @@ import BuilderStudio from './components/builder/BuilderStudio';
 import RunHistory from './components/builder/RunHistory';
 import { ToolPanel } from './components/tools/ToolPanel';
 import { McpPanel } from './components/mcp/McpPanel';
+import { ConnectionsPanel } from './components/connections/ConnectionsPanel';
 import { MemoryPanel } from './components/memory/MemoryPanel';
 import { KnowledgeBridge } from './components/memory/KnowledgeBridge';
 import { ResearchPanel } from './components/memory/ResearchPanel';
@@ -34,6 +35,7 @@ const SECTION_PHASE: Record<NavSection, number> = {
   models: 2,
   tools: 6,
   mcp: 7,
+  connections: 7,
   memory: 10,
   artifacts: 8,
   runs: 5,
@@ -52,6 +54,7 @@ const SECTION_TITLE: Record<NavSection, string> = {
   models: 'Models',
   tools: 'Tools',
   mcp: 'MCP Servers',
+  connections: 'Connections',
   memory: 'Memory',
   artifacts: 'Artifacts',
   runs: 'Runs',
@@ -233,6 +236,8 @@ export default function App(): React.ReactElement {
         <ToolPanel onToast={pushToast} />
       ) : section === 'mcp' ? (
         <McpPanel onToast={pushToast} />
+      ) : section === 'connections' ? (
+        <ConnectionsPanel onToast={pushToast} />
       ) : section === 'memory' ? (
         <MemoryTabs />
       ) : section === 'artifacts' ? (
