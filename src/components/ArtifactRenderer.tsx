@@ -66,11 +66,6 @@ export function ArtifactRenderer({ artifact }: { artifact: Artifact }): React.Re
       </div>
     );
   }
-  const [checked, setChecked] = useState<boolean[]>(
-    (artifact.items ?? []).map((i) => i.checked),
-  );
-  const [slider, setSlider] = useState<number>(artifact.value ?? artifact.min ?? 0);
-  const [voted, setVoted] = useState<number | null>(null);
 
   if (artifact.kind === 'card') {
     return (
