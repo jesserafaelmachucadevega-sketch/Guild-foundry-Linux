@@ -8,15 +8,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
 
-import girlDefault from '../../assets/avatar/girl-default.png';
-import boyDefault from '../../assets/avatar/boy-default.png';
+import { GIRL_DEFAULT, BOY_DEFAULT } from '../../assets/avatar/defaults';
 
 export type AvatarGender = 'girl' | 'boy';
 export type AvatarActivity = 'idle' | 'typing' | 'talking' | 'waiting';
 
 const DEFAULT_STILL: Record<AvatarGender, string> = {
-  girl: girlDefault,
-  boy: boyDefault,
+  girl: GIRL_DEFAULT,
+  boy: BOY_DEFAULT,
 };
 
 export const AVATAR_GENDER_KEY = 'avatar.gender';
