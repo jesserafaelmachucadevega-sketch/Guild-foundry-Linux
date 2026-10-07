@@ -209,6 +209,23 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "media".into(),
             ready: true, // Phase 13 (crate::media)
         },
+        ToolDef {
+            name: "media.generate_video".into(),
+            description: "Generate a short video clip from a text prompt via the Fal API (default Wan 2.7, ~$0.05/sec; premium models $0.20+/sec). Works with ANY loaded model. Takes minutes: the tool polls until the clip is ready. The video is saved locally and the result carries its file path. Each call costs real money — a 5s premium clip can cost over $1. Confirm duration and model with the user before generating."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "prompt": { "type": "string", "description": "Detailed video prompt. Describe subject, motion, camera, style." },
+                    "model": { "type": "string", "description": "Fal video endpoint id override, e.g. fal-ai/wan/v2.7/text-to-video, fal-ai/veo3.1, fal-ai/kling-video/v3/pro/text-to-video. Defaults to the media.video_model setting, then fal-ai/wan/v2.7/text-to-video." },
+                    "duration_secs": { "type": "integer", "minimum": 3, "maximum": 15, "description": "Clip length in seconds (default 5). Longer costs more." },
+                    "aspect_ratio": { "type": "string", "description": "16:9 (default), 9:16, 1:1." }
+                }),
+                &["prompt"],
+            ),
+            risk: RiskLevel::Moderate, // costs real money per second; permission gate applies
+            domain: "media".into(),
+            ready: true, // Phase 13 (crate::media)
+        },
     ]
 }
 
@@ -751,6 +768,13 @@ pub fn tool_execute(
             let model = args.get("model").and_then(|v| v.as_str());
             let image_size = args.get("image_size").and_then(|v| v.as_str());
             crate::media::generate_image(&app, &prompt, model, image_size)
+        }
+        "media.generate_video" => {
+            let prompt = arg_str(&args, "prompt")?;
+            let model = args.get("model").and_then(|v| v.as_str());
+            let duration_secs = args.get("duration_secs").and_then(|v| v.as_u64());
+            let aspect_ratio = args.get("aspect_ratio").and_then(|v| v.as_str());
+            crate::media::generate_video(&app, &prompt, model, duration_secs, aspect_ratio)
         }
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
     };
