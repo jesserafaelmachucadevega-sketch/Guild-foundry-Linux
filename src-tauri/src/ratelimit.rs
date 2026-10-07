@@ -11,12 +11,14 @@
 //   - Daily counter per provider (SQLite, keyed by local date): hard stop at
 //     `per_day` with a clear, actionable error instead of hammering the API.
 //
-// Limits are settings-overridable (store keys):
-//   ratelimit.<provider_id>.per_minute  (default: 20 for OpenRouter-likes, 60 otherwise)
-//   ratelimit.<provider_id>.per_day     (default: 1000 for OpenRouter-likes, unlimited otherwise)
-//   ratelimit.<provider_id>.enabled     (default: true)
+// The guard applies ONLY to free models (OpenRouter `:free` suffix). Paid
+// models run unrestricted — the user is paying per request, so no artificial
+// cap. Local providers (Ollama etc.) are never throttled either.
 //
-// Local providers (Ollama etc.) are never throttled: no remote quota exists.
+// Limits are settings-overridable (store keys):
+//   ratelimit.<provider_id>.per_minute  (default 20)
+//   ratelimit.<provider_id>.per_day     (default 1000)
+//   ratelimit.<provider_id>.enabled     (default true)
 
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -51,26 +53,25 @@ struct Limits {
     enabled: bool,
 }
 
-fn is_openrouter_like(provider_id: &str) -> bool {
-    let id = provider_id.to_lowercase();
-    id.contains("openrouter") || id.contains("open_router")
-}
-
 fn is_local(provider_id: &str) -> bool {
     let id = provider_id.to_lowercase();
     id.contains("ollama") || id.contains("local") || id.contains("llamacpp")
 }
 
+/// OpenRouter marks free-tier models with a `:free` suffix. Only those models
+/// are subject to the platform's request quotas; paid models are billed per
+/// request and run unrestricted.
+fn is_free_model(model_id: &str) -> bool {
+    model_id.to_lowercase().ends_with(":free")
+}
+
 fn load_limits(app: &tauri::AppHandle, provider_id: &str) -> Limits {
-    if is_local(provider_id) {
-        return Limits { per_minute: u32::MAX, per_day: u32::MAX, enabled: false };
-    }
+    // Only free models reach this point (see acquire), so the defaults match
+    // OpenRouter's enhanced free tier: 20 req/min, 1,000 req/day.
     let key = |s: &str| format!("ratelimit.{}.{}", provider_id, s);
-    let default_pm = if is_openrouter_like(provider_id) { 20 } else { 60 };
-    let default_pd = if is_openrouter_like(provider_id) { 1000 } else { u32::MAX };
     Limits {
-        per_minute: get_setting(app, &key("per_minute")).unwrap_or(default_pm),
-        per_day: get_setting(app, &key("per_day")).unwrap_or(default_pd),
+        per_minute: get_setting(app, &key("per_minute")).unwrap_or(20),
+        per_day: get_setting(app, &key("per_day")).unwrap_or(1000),
         enabled: get_setting(app, &key("enabled")).unwrap_or(true),
     }
 }
@@ -115,7 +116,18 @@ static BUCKETS: LazyLock<Mutex<HashMap<String, Bucket>>> =
 /// Enforce rate + quota policy for one model request. Call before any network
 /// call in the provider layer. On success the request may proceed; on error
 /// the caller must surface the message to the user instead of retrying blindly.
-pub async fn acquire(app: &tauri::AppHandle, provider_id: &str) -> Result<(), String> {
+///
+/// The guard applies ONLY to free models (`:free` suffix). Paid models and
+/// local providers bypass entirely.
+pub async fn acquire(
+    app: &tauri::AppHandle,
+    provider_id: &str,
+    model_id: &str,
+) -> Result<(), String> {
+    // Paid models run free; local providers never had quotas.
+    if is_local(provider_id) || !is_free_model(model_id) {
+        return Ok(());
+    }
     let limits = load_limits(app, provider_id);
     if !limits.enabled {
         return Ok(());
@@ -180,4 +192,36 @@ pub fn ratelimit_status(
     let limits = load_limits(&app, &provider_id);
     let used = daily_count(&app, &provider_id)?;
     Ok((used, limits.per_day))
+}
+
+/// Quota-awareness notice for the agent's system prompt. Returns `Some` only
+/// when the model is a free-tier model subject to quotas, so the model itself
+/// knows its budget and spends turns wisely. Paid and local models get `None`
+/// — no notice, no constraint.
+#[tauri::command]
+pub fn ratelimit_quota_notice(
+    app: tauri::AppHandle,
+    provider_id: String,
+    model_id: String,
+) -> Result<Option<String>, String> {
+    if is_local(&provider_id) || !is_free_model(&model_id) {
+        return Ok(None);
+    }
+    let limits = load_limits(&app, &provider_id);
+    if !limits.enabled {
+        return Ok(None);
+    }
+    Ok(Some(format!(
+        "QUOTA NOTICE: you are running on a FREE-tier model. Provider limits are \
+         ~{pm} requests/minute and ~{pd} requests/day, shared across all sessions. \
+         Every one of your turns counts as one request. Spend the budget wisely:\n\
+         - Batch independent tool calls into as few turns as possible.\n\
+         - Do not re-verify what a tool result already told you.\n\
+         - Prefer decisive action over exploratory loops; check your session notes \
+         before spending another request.\n\
+         - If the harness reports quota exhaustion, stop and summarize for the \
+         user instead of retrying.",
+        pm = limits.per_minute,
+        pd = limits.per_day,
+    )))
 }
