@@ -227,6 +227,38 @@ fn tool_registry() -> Vec<ToolDef> {
             ready: true, // Phase 13 (crate::media)
         },
         ToolDef {
+            name: "media.transcribe".into(),
+            description: "Transcribe speech to text via Fal Whisper (99+ languages, auto-detected). Give audio_url (public URL) or audio_path (local file, uploaded automatically). Optional language code and task transcribe|translate."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "audio_url": { "type": "string", "description": "Public URL of the audio file." },
+                    "audio_path": { "type": "string", "description": "Local audio file path (mp3, wav, m4a, webm, ogg)." },
+                    "language": { "type": "string", "description": "ISO language code; auto-detected if omitted." },
+                    "task": { "type": "string", "description": "transcribe (default) or translate (to English)." }
+                }),
+                &[],
+            ),
+            risk: RiskLevel::Low,
+            domain: "media".into(),
+            ready: true, // Phase 13 (crate::media)
+        },
+        ToolDef {
+            name: "media.speak".into(),
+            description: "Speak text aloud via Fal TTS. The audio is saved locally and the result carries its file path; the harness plays it. Use when the user wants voice output, or when speech mode is on. Costs per character (~$0.025/1000 chars)."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "text": { "type": "string", "description": "Text to speak (max 5000 chars)." },
+                    "voice": { "type": "string", "description": "Voice id override; default voice if omitted." }
+                }),
+                &["text"],
+            ),
+            risk: RiskLevel::Moderate, // costs per character; permission gate applies
+            domain: "media".into(),
+            ready: true, // Phase 13 (crate::media)
+        },
+        ToolDef {
             name: "artifact.create".into(),
             description: "Create an interactive artifact the user sees inline in the conversation: poll (vote buttons), checklist (toggles), slider, card, sticky (sticky note), whiteboard (board of positioned sticky notes). The artifact is attached to your reply and rendered by the harness. Use for anything the user should see, touch, or decide on — not plain text."
                 .into(),
@@ -899,6 +931,18 @@ pub fn tool_execute(
             let duration_secs = args.get("duration_secs").and_then(|v| v.as_u64());
             let aspect_ratio = args.get("aspect_ratio").and_then(|v| v.as_str());
             crate::media::generate_video(&app, &prompt, model, duration_secs, aspect_ratio)
+        }
+        "media.transcribe" => {
+            let audio_url = args.get("audio_url").and_then(|v| v.as_str());
+            let audio_path = args.get("audio_path").and_then(|v| v.as_str());
+            let language = args.get("language").and_then(|v| v.as_str());
+            let task = args.get("task").and_then(|v| v.as_str());
+            crate::media::transcribe(audio_url, audio_path, language, task)
+        }
+        "media.speak" => {
+            let text = arg_str(&args, "text")?;
+            let voice = args.get("voice").and_then(|v| v.as_str());
+            crate::media::speak(&app, &text, voice)
         }
         "artifact.create" => ad_create_artifact(&args).map(|a| serde_json::json!({ "artifact": a })),
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
