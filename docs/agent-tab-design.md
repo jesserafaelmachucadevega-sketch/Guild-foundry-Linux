@@ -344,3 +344,23 @@ agent headlessly and notify the user with the result.
   Grants are in-memory only and revoked when the run ends.
 - **UI**: new `Sched.` nav section — list, create/edit, pause/resume, run now,
   last-run status and summary.
+
+## 11. Agent avatar (built 2026-10-07)
+
+The agent on the **Agent tab** gets a living face. Agent tab ONLY — never
+builder agents, never conference members.
+
+- **Choice**: `AvatarPicker` — the girl (pink) or the boy (blue). Saved as
+  the `avatar.gender` setting. The still portrait is the default face.
+- **Activity states**: `AvatarStatus` swaps in a looping clip per activity —
+  `typing` (laptop), `talking` (phone/headset), `waiting` (standing, foot
+  tap), `idle` (bed, eyes open/close). Missing clips fall back to the still;
+  never a broken frame.
+- **Look**: circular crop with a soft feathered/clouded edge (baked into the
+  PNGs; the component also applies a CSS radial mask so future clips match).
+- **Clips live in app-data/avatars/** (`girl-typing.webm`, `boy-talking.webm`,
+  …), not in the repo — keeps the install lean. Stills are bundled under
+  `src/assets/avatar/`.
+- **Wiring** (when the Agent tab lands): map loop state → activity
+  (`streaming` → typing, tool-call in flight → waiting, `media.speak`
+  playing → talking, otherwise idle) and pass the user's `avatar.gender`.
