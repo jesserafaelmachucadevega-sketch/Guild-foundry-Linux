@@ -18,6 +18,7 @@ mod diagnostics;
 mod git;
 mod index;
 mod mcp;
+mod media;
 mod memory;
 mod os_info;
 mod providers;
