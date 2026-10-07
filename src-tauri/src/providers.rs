@@ -1051,7 +1051,39 @@ fn build_chat_target(
                 "stream": stream,
             });
             if !system_parts.is_empty() {
-                body["system"] = serde_json::json!(system_parts.join("\n\n"));
+                // Prompt caching: the system prompt (tool defs, constitution, quota
+                // notice) is identical every turn. Marking it cacheable means the
+                // provider reuses the computed prefix instead of reprocessing and
+                // rebilling it (~90% cheaper input tokens, faster first token).
+                // OpenAI/Google cache automatically; Ollama has no per-token cost.
+                body["system"] = serde_json::json!([{
+                    "type": "text",
+                    "text": system_parts.join("\n\n"),
+                    "cache_control": {"type": "ephemeral"}
+                }]);
+            }
+            // Extend the cached prefix over conversation history: a breakpoint on
+            // the last message means next turn's identical prefix is a cache hit.
+            // The newest message is always the fresh tail — never cached itself.
+            if let Some(last) = body["messages"].as_array_mut().and_then(|a| a.last_mut()) {
+                let role = last
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("user")
+                    .to_string();
+                let content = last
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                *last = serde_json::json!({
+                    "role": role,
+                    "content": [{
+                        "type": "text",
+                        "text": content,
+                        "cache_control": {"type": "ephemeral"}
+                    }]
+                });
             }
             if let Some(t) = params.temperature {
                 body["temperature"] = serde_json::json!(t);
