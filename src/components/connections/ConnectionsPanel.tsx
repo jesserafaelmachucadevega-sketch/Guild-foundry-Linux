@@ -115,6 +115,17 @@ const TEMPLATES: ConnectorTemplate[] = [
     bearerPlaceholder: 'Brave / Firecrawl API key',
     note: 'This is what keeps a local model current: it looks things up instead of guessing from weights.',
   },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    tagline: 'Search videos and pull transcripts — look up anything, read it instead of watching.',
+    auth: 'bearer',
+    urlHint: '',
+    urlPlaceholder: 'Paste your YouTube MCP server URL (see starter pack doc)',
+    bearerLabel: 'API key',
+    bearerPlaceholder: 'Server API key (if required)',
+    note: 'API-key servers like transcriptapi.com or web-data-toolkit work here. Some hosted servers use their own OAuth sign-in instead — check the starter pack doc.',
+  },
 ];
 
 function errText(e: unknown): string {
