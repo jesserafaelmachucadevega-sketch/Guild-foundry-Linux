@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use std::path::PathBuf;
 use tauri::Manager;
 
-const CURRENT_SCHEMA_VERSION: i64 = 2;
+const CURRENT_SCHEMA_VERSION: i64 = 3;
 
 const MIGRATION_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS projects (
@@ -170,6 +170,14 @@ fn apply_migrations(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch(crate::build::MIGRATION_BUILD_V2)?;
         conn.execute(
             "INSERT INTO schema_migrations (version, applied_at) VALUES (2, datetime('now'))",
+            [],
+        )?;
+    }
+    // Suggested to-do: per-conversation follow-up suggestions.
+    if current < 3 {
+        conn.execute_batch(crate::suggestions::MIGRATION_SUGGESTIONS_V3)?;
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (3, datetime('now'))",
             [],
         )?;
     }
