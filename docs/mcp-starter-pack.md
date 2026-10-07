@@ -55,6 +55,12 @@ These five cover ~90% of what makes an agent feel like a frontier assistant:
      API key header, demo key `wdt_demo_public` to try first.
    - `mcp.tubealfred.com` — hosted, 34 read-only tools, own OAuth sign-in flow
      (no YouTube API key needed); 50 free credits on signup.
+- **Music generation** — Suno is the strongest for full songs with vocals (v6;
+  paid plans allow downloads + commercial rights, $10/mo Pro). No official Suno
+  MCP exists; the practical routes are aggregator APIs: **AIMLAPI** (one key for
+  Suno, Udio, Minimax music models) or **PiAPI** (Udio plus video models like
+  Kling/Luma). Find a community MCP server wrapping one of these in the
+  registries. (Note: Google Flow is video generation, not music — separate tool.)
 
 ## Tier 3 — skip until you have a reason
 
