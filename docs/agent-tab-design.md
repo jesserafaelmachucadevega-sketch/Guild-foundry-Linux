@@ -90,8 +90,17 @@ discipline.
   surviving remote URL expiry. Any future media tool follows the same contract:
   absolute local path in `output.path`, remote URL in `output.url`.
 
+### 4.6 Interactive artifacts contract
+- The agent creates polls, checklists, sliders, cards, stickies, and whiteboards with
+  the `artifact.create` tool (domain `interaction`, risk Low). The tool validates the
+  payload and returns `{ artifact: {...} }`.
+- The Agent tab appends `result.output.artifact` to the current assistant message's
+  `artifacts` array; `ArtifactRenderer` renders each kind inline (whiteboard notes are
+  positioned by x/y percentage; the user can rearrange in a future pass).
+- Artifacts persist with the conversation — no separate save step.
 
-### 4.6 Browser-use tool (new build)
+
+### 4.7 Browser-use tool (new build)
 For services without usable APIs (Replit, Lovable, arbitrary web apps): a tool that
 drives a real Chromium instance (click, type, read). This is the largest new piece of
 work in the connector story. Sign-in flows reuse the Secure Vault pattern — the agent
