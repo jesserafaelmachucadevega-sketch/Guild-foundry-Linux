@@ -270,6 +270,9 @@ fn main() {
             diagnostics::crash_state_save,
             diagnostics::crash_state_load,
             diagnostics::crash_state_clear,
+            // Phase 13 — media: voice (mic transcription, read-aloud)
+            media::media_transcribe_mic,
+            media::media_speak_text,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Guild Foundry AI");
