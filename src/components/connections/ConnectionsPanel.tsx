@@ -535,6 +535,7 @@ const TTS_VOICES = [
   { id: 'af_heart', label: 'Heart — warm, natural' },
   { id: 'af_bella', label: 'Bella — bright, natural' },
   { id: 'am_adam', label: 'Adam — deep American male, YouTube narrator' },
+  { id: 'bf_emma', label: 'Emma — British female, natural' },
 ];
 
 function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
