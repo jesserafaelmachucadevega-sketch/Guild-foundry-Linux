@@ -244,6 +244,20 @@ fn tool_registry() -> Vec<ToolDef> {
             ready: true, // Phase 13 (crate::media)
         },
         ToolDef {
+            name: "avatar.set".into(),
+            description: "Set the Agent tab's avatar from an image file (e.g. the path returned by media.generate_image). Use when the user asks to change or redesign their avatar. The custom portrait overrides the default until cleared."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "image_path": { "type": "string", "description": "Local path of the new avatar image (PNG/JPEG/WebP)." }
+                }),
+                &["image_path"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "interaction".into(),
+            ready: true,
+        },
+        ToolDef {
             name: "media.speak".into(),
             description: "Speak text aloud via Fal Kokoro TTS (natural human voices). The audio is saved locally and the result carries its file path; the harness plays it. Language: en (default), es, fr — routes to the matching Kokoro endpoint. Costs per character (~$0.025/1000 chars)."
                 .into(),
@@ -952,6 +966,10 @@ pub fn tool_execute(
             let voice = args.get("voice").and_then(|v| v.as_str());
             let language = args.get("language").and_then(|v| v.as_str());
             crate::media::speak(&app, &text, voice, language)
+        }
+        "avatar.set" => {
+            let path = arg_str(&args, "image_path")?;
+            crate::avatar::set_avatar_from_path(&app, &path)
         }
         "artifact.create" => ad_create_artifact(&args).map(|a| serde_json::json!({ "artifact": a })),
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
