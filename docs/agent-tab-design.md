@@ -366,8 +366,33 @@ builder agents, never conference members.
   PNGs; the component also applies a CSS radial mask so future clips match).
 - **Clips live in app-data/avatars/** (`girl-typing.webm`, `boy-talking.webm`,
   …), not in the repo — keeps the install lean. Default portraits are inlined
-  as data URIs (`src/assets/avatar/defaults.ts`); extra stills also load from
+  as data URIs (`src/assets/avatar/girl_default.ts`,
+  `src/assets/avatar/boy_default.ts`); extra stills also load from
   app-data at runtime.
 - **Wiring** (when the Agent tab lands): map loop state → activity
   (`streaming` → typing, tool-call in flight → waiting, `media.speak`
   playing → talking, otherwise idle) and pass the user's `avatar.gender`.
+
+## 12. Suggested to-do (built 2026-10-07)
+
+Dynamic follow-ups the user can run or ignore — deliberately NOT a feed.
+In-chat, per-conversation, action-shaped.
+
+- **Backend** (`src-tauri/src/suggestions.rs`, schema v3): `suggestions` table
+  (id, conversation_id, label, prompt, status pending|accepted|dismissed).
+  Commands: `suggestions_list`, `suggestions_recent_labels`,
+  `suggestions_add`, `suggestions_accept`, `suggestions_dismiss`.
+- **Generation** (`src/lib/suggestions.ts` → `generateSuggestions`): one cheap
+  `provider_chat_complete` call at turn end over the last ~6 messages, fed the
+  12 most recent labels so it never repeats. Max 3, JSON-only, failures
+  swallowed — a suggestion pass never breaks the chat.
+- **UI** (`src/components/SuggestedList.tsx`): renders under the last message
+  as "Suggested to-do" with the label and a dismiss ×. Tapping a suggestion
+  marks it accepted and hands its stored prompt to the host's `onRun`
+  (normally: send as a new user message). Suggestions never auto-run; all
+  permission gates apply to the run.
+- **Wiring** (when the Agent tab lands): on `loop_end` with status `done`,
+  call `generateSuggestions({ conversationId, providerId, modelId,
+  transcript })`, then bump `SuggestedList`'s `refreshToken`. `onRun` sends
+  the prompt as the next user message. Style the `.gf-suggested*` classes in
+  the Agent tab stylesheet.
