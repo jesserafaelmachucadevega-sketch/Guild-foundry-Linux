@@ -11,6 +11,7 @@
 
 import { invoke } from './api';
 import { streamChat, type ChatMsg } from './chat';
+import { CONTEXT_ECONOMY_PROMPT } from './contextEconomy';
 import { listen } from '@tauri-apps/api/event';
 import type {
   ApprovalResolvedEvent,
@@ -61,7 +62,11 @@ const DEFAULT_PROMPTS: Record<string, string> = {
 };
 
 function defaultPrompt(key: string): string {
-  return DEFAULT_PROMPTS[key] ?? DEFAULT_PROMPTS['agent.supervisor'];
+  const base = DEFAULT_PROMPTS[key] ?? DEFAULT_PROMPTS['agent.supervisor'];
+  // Every builder agent gets the context-economy policy appended: read once,
+  // take notes, never re-read blindly. User-set prompts in Settings override
+  // the whole prompt and are left untouched.
+  return `${base}\n\n${CONTEXT_ECONOMY_PROMPT}`;
 }
 
 /** One-shot (non-streaming) agent completion with logging. */
