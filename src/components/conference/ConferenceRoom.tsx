@@ -5,7 +5,7 @@
 // selection, post-debate discussion mode, per-round voting, the knowledge
 // bridge panel, and SDUI widget rendering inside model messages.
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { streamChat, type ChatMsg } from '../../lib/chat';
 import { DesktopCapabilityRequired } from '../../lib/api';
 import type { ChatMessage } from '../../lib/types';
@@ -19,6 +19,8 @@ import { DebateControls, DEBATE_ROUNDS, type DebatePhase } from './DebateControl
 import { WinnerDialog } from './WinnerDialog';
 import { SynthesisPanel } from './SynthesisPanel';
 import { SduiRenderer, extractSduiWidgets, stripSdui } from './SduiRenderer';
+import { VoiceControls } from '../voice/VoiceControls';
+import { speakText, getSpeechEnabled, stopSpeech } from '../voice/speech';
 import './conference.css';
 
 // Every system prompt carries the human-speech rule (SDUI widgets are the one
@@ -134,6 +136,35 @@ export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): R
     blankParticipant(1),
   ]);
   const [panes, setPanes] = useState<PaneState[]>([blankPane(), blankPane()]);
+
+  // Voice: when speech is unmuted, immediately dictate new assistant messages.
+  const spokenRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const on = await getSpeechEnabled();
+      if (!on || cancelled) return;
+      for (const pane of panes) {
+        const last = [...pane.messages]
+          .reverse()
+          .find((m) => m.role === 'assistant' && m.content.trim());
+        if (last && !spokenRef.current.has(last.id)) {
+          spokenRef.current.add(last.id);
+          try {
+            await speakText(last.content);
+          } catch {
+            /* playback failure is non-fatal */
+          }
+          break;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [panes]);
+
+  useEffect(() => () => stopSpeech(), []);
   const [phase, setPhase] = useState<DebatePhase>('idle');
   const [roundIndex, setRoundIndex] = useState(-1);
   const [topic, setTopic] = useState('');
@@ -714,6 +745,13 @@ export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): R
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void sendPane(s);
                   }}
+                />
+                <VoiceControls
+                  disabled={debateLocked}
+                  onToast={onToast}
+                  onTranscript={(text) =>
+                    updatePane(s, { input: pane.input ? `${pane.input} ${text}` : text })
+                  }
                 />
                 <button
                   className="gf-btn primary"
