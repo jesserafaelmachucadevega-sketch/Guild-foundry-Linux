@@ -33,7 +33,28 @@ pub const KNOWN_VIDEO_MODELS: &[(&str, &str)] = &[
 
 pub const DEFAULT_STT_MODEL: &str = "fal-ai/whisper";
 /// Kokoro — natural human-sounding TTS (no robotic browser voice).
-pub const DEFAULT_TTS_MODEL: &str = "fal-ai/kokoro/american-english";
+/// Per-language endpoints; ES/FR take `prompt` instead of `text`.
+pub const TTS_ENDPOINTS: &[(&str, &str)] = &[
+    ("en", "fal-ai/kokoro/american-english"),
+    ("es", "fal-ai/kokoro/spanish"),
+    ("fr", "fal-ai/kokoro/french"),
+];
+
+fn tts_endpoint_for(language: &str, voice: Option<&str>) -> (&'static str, &'static str) {
+    match language {
+        "es" => ("fal-ai/kokoro/spanish", "prompt"),
+        "fr" => ("fal-ai/kokoro/french", "prompt"),
+        _ => {
+            // British voices live on the British endpoint.
+            let v = voice.unwrap_or("");
+            if v.starts_with("bf_") || v.starts_with("bm_") {
+                ("fal-ai/kokoro/british-english", "text")
+            } else {
+                ("fal-ai/kokoro/american-english", "text")
+            }
+        }
+    }
+}
 
 /// Upload a local file to Fal storage; returns the public file URL.
 /// Two-step flow: initiate → PUT bytes to the upload URL.
@@ -148,11 +169,14 @@ pub fn transcribe(
     })
 }
 
-/// Text-to-speech via Fal. Returns the saved local MP3 path; the harness plays it.
+/// Text-to-speech via Fal Kokoro. Language-aware: en/es/fr route to the
+/// matching endpoint (more languages are one line in TTS_ENDPOINTS).
+/// Returns the saved local MP3 path; the harness plays it.
 pub fn speak(
     app: &tauri::AppHandle,
     text: &str,
     voice: Option<&str>,
+    language: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     if text.trim().is_empty() {
         return Err("text must not be empty".to_string());
@@ -162,9 +186,13 @@ pub fn speak(
     }
     let key = fal_key()?;
 
-    // Tool arg wins; then the media.tts_voice setting; then Kokoro's default.
+    // Tool arg wins; then settings; then defaults.
     let setting_voice: Option<String> =
         crate::settings::settings_get(app.clone(), "media.tts_voice".to_string())
+            .ok()
+            .flatten();
+    let setting_lang: Option<String> =
+        crate::settings::settings_get(app.clone(), "media.tts_language".to_string())
             .ok()
             .flatten();
     let voice = voice
@@ -172,6 +200,12 @@ pub fn speak(
         .filter(|s| !s.trim().is_empty())
         .or(setting_voice)
         .filter(|s| !s.trim().is_empty());
+    let language = language
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty())
+        .or(setting_lang)
+        .unwrap_or_else(|| "en".to_string());
+    let (endpoint, text_field) = tts_endpoint_for(&language, voice.as_deref());
 
     tauri::async_runtime::block_on(async {
         let client = reqwest::Client::builder()
@@ -179,13 +213,14 @@ pub fn speak(
             .build()
             .map_err(|e| format!("HTTP client failed: {}", e))?;
 
-        let mut body = serde_json::json!({ "text": text });
+        let mut body = serde_json::json!({});
+        body[text_field] = serde_json::json!(text);
         if let Some(v) = voice.as_deref() {
             body["voice"] = serde_json::json!(v);
         }
         let res = post_json(
             &client,
-            &format!("https://fal.run/{}", DEFAULT_TTS_MODEL),
+            &format!("https://fal.run/{}", endpoint),
             &key,
             &body,
         )
@@ -275,8 +310,9 @@ pub fn media_speak_text(
     app: tauri::AppHandle,
     text: String,
     voice: Option<String>,
+    language: Option<String>,
 ) -> Result<String, String> {
-    let out = speak(&app, &text, voice.as_deref())?;
+    let out = speak(&app, &text, voice.as_deref(), language.as_deref())?;
     out.get("path")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
