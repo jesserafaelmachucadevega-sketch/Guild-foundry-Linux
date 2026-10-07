@@ -48,6 +48,13 @@ These five cover ~90% of what makes an agent feel like a frontier assistant:
 - **Slack / Discord** — for agents that coordinate with teams.
 - **Puppeteer / Playwright** — browser automation for sites without APIs
    (the fallback when no MCP server exists for a service).
+- **YouTube** — search + transcripts is the killer combo: the agent looks up a video
+   and reads it instead of watching. Options (verify before connecting):
+   - `transcriptapi.com/mcp` — search, transcripts, channel data; API key or OAuth 2.1.
+   - `web-data-toolkit.vercel.app/mcp` — YouTube transcripts plus Google Trends;
+     API key header, demo key `wdt_demo_public` to try first.
+   - `mcp.tubealfred.com` — hosted, 34 read-only tools, own OAuth sign-in flow
+     (no YouTube API key needed); 50 free credits on signup.
 
 ## Tier 3 — skip until you have a reason
 
