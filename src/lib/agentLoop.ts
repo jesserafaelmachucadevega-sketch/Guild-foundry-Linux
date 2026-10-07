@@ -30,6 +30,8 @@ export interface LoopConfig {
   onStateChange: (state: BuilderState) => void;
   onTasksChange: () => void;
   shouldStop: () => boolean;
+  /** Optional absolute project root; when set, TESTING runs the real test suite. */
+  projectRoot?: string;
 }
 
 interface PlanTask {
@@ -139,8 +141,6 @@ async function awaitApproval(cfg: LoopConfig, approvalId: string): Promise<boole
         .catch(() => undefined);
       if (cfg.shouldStop()) {
         window.clearInterval(timer);
-        settled = true;
-        void unlisten();
         reject(new Error('run stopped by user'));
       }
     }, 3000);
@@ -212,7 +212,7 @@ async function executeTask(cfg: LoopConfig, task: TaskRow, plan: PlanTask): Prom
       try {
         const res = await invoke<unknown>('tool_execute', {
           tool: plan.tool,
-          args_json: JSON.stringify(plan.tool_args ?? {}),
+          args: plan.tool_args ?? {},
           agent_id: task.agent,
           session_id: cfg.runId,
         });
@@ -478,19 +478,49 @@ G';
     checkStop(cfg);
     const next: BuilderState =
       from === 'BUILDING' ? 'TESTING' : from === 'TESTING' ? 'SECURITY_REVIEW' : 'VALIDATION';
+    // Real verification: when a project root is known, run the actual test
+    // suite via tool_execute and give the agent the real output instead of
+    // asking it to guess.
+    let verificationContext = '';
+    let realTestFailed = false;
+    if (from === 'TESTING' && cfg.projectRoot) {
+      try {
+        const t = await invoke<{ ok: boolean; output: unknown; error?: string }>('tool_execute', {
+          tool: 'test.run',
+          args_json: JSON.stringify({ project_root: cfg.projectRoot }),
+          agent_id: 'supervisor',
+          session_id: cfg.runId,
+        });
+        if (t.ok) {
+          verificationContext =
+            '\n\nReal test suite output (from tool_execute test.run — trust this over assumptions):\n' +
+            JSON.stringify(t.output).slice(0, 4000);
+        } else {
+          realTestFailed = true;
+          verificationContext =
+            '\n\nReal test suite FAILED to run: ' + (t.error ?? 'unknown error') +
+            '\nReport this honestly.';
+        }
+      } catch (err) {
+        verificationContext =
+          '\n\nReal test suite could not be executed: ' +
+          (err instanceof Error ? err.message : String(err)) +
+          '\nReport this honestly.';
+      }
+    }
     const verdict = await askAgent(
       cfg,
       agentKey,
       [
         {
           role: 'user',
-          content: `Goal: "${cfg.goal}". Perform the ${label} for this run. Reply with a short verdict starting with PASS or FAIL, then details. If FAIL, explain exactly what must be fixed.`,
+          content: `Goal: "${cfg.goal}". Perform the ${label} for this run.${verificationContext} Reply with a short verdict starting with PASS or FAIL, then details. If FAIL, explain exactly what must be fixed.`,
         },
       ],
       agentKey.replace('agent.', ''),
     );
     cfg.onLog(`${label} verdict: ${verdict.slice(0, 200)}`);
-    if (/^\s*FAIL/i.test(verdict)) {
+    if (/^\s*FAIL/i.test(verdict) || realTestFailed) {
       cfg.onLog(`${label} FAILED — moving to FIXING`, 'err');
       await invoke('agent_task_create', {
         run_id: cfg.runId,

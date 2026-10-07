@@ -45,7 +45,8 @@ pub enum RiskLevel {
 }
 
 /// A single registered tool: name, description, JSON Schema for args, risk.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize
+)]
 pub struct ToolDef {
     pub name: String,
     pub description: String,
@@ -84,7 +85,7 @@ fn tool_registry() -> Vec<ToolDef> {
             ),
             risk: RiskLevel::Low,
             domain: "filesystem".into(),
-            ready: false, // Phase 4 (crate::workspace)
+            ready: true, // Phase 4 (crate::workspace) landed // Phase 4 (crate::workspace)
         },
         ToolDef {
             name: "project.write".into(),
@@ -93,14 +94,15 @@ fn tool_registry() -> Vec<ToolDef> {
             schema: schema(
                 serde_json::json!({
                     "project_root": { "type": "string", "description": "Absolute path of the project root." },
-                    "path": { "type": "string", "description": "Relative path of the file inside the project." },
+                    "path": { "type": "string", "description": "Relative path of the file ins
+ide the project." },
                     "content": { "type": "string", "description": "Full new file content." }
                 }),
                 &["project_root", "path", "content"],
             ),
             risk: RiskLevel::Moderate,
             domain: "filesystem".into(),
-            ready: false, // Phase 4 (crate::workspace)
+            ready: true, // Phase 4 (crate::workspace) landed // Phase 4 (crate::workspace)
         },
         ToolDef {
             name: "project.create_file".into(),
@@ -116,7 +118,7 @@ fn tool_registry() -> Vec<ToolDef> {
             ),
             risk: RiskLevel::Moderate,
             domain: "filesystem".into(),
-            ready: false, // Phase 4 (crate::workspace)
+            ready: true, // Phase 4 (crate::workspace) landed // Phase 4 (crate::workspace)
         },
         ToolDef {
             name: "project.search".into(),
@@ -131,12 +133,13 @@ fn tool_registry() -> Vec<ToolDef> {
             ),
             risk: RiskLevel::Low,
             domain: "filesystem".into(),
-            ready: false, // Phase 4 (crate::workspace)
+            ready: true, // Phase 4 (crate::workspace) landed // Phase 4 (crate::workspace)
         },
         ToolDef {
             name: "build.start".into(),
             description: "Start a project build with the given build target (e.g. debug, release, web)."
-                .into(),
+                .into()
+,
             schema: schema(
                 serde_json::json!({
                     "project_root": { "type": "string", "description": "Absolute path of the project root." },
@@ -146,7 +149,7 @@ fn tool_registry() -> Vec<ToolDef> {
             ),
             risk: RiskLevel::Moderate,
             domain: "build".into(),
-            ready: false, // Phase 8 (crate::build)
+            ready: true, // Phase 8 (crate::build) landed // Phase 8 (crate::build)
         },
         ToolDef {
             name: "test.run".into(),
@@ -160,7 +163,7 @@ fn tool_registry() -> Vec<ToolDef> {
             ),
             risk: RiskLevel::Moderate,
             domain: "build".into(),
-            ready: false, // Phase 8 (crate::build)
+            ready: true, // Phase 8 (crate::build) landed // Phase 8 (crate::build)
         },
         ToolDef {
             name: "terminal.exec".into(),
@@ -176,11 +179,12 @@ fn tool_registry() -> Vec<ToolDef> {
             ),
             risk: RiskLevel::High,
             domain: "shell".into(),
-            ready: false, // Phase 4 (crate::terminal)
+            ready: true, // Phase 4 (crate::terminal) landed // Phase 4 (crate::terminal)
         },
         ToolDef {
             name: "user.ask".into(),
-            description: "Ask the user a clarifying question. Never blocks the backend; the frontend renders an inline prompt and resumes the loop with the answer."
+            description: "Ask the user a clarifying question. Never blocks th
+e backend; the frontend renders an inline prompt and resumes the loop with the answer."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -227,7 +231,8 @@ fn ensure_tool_executions_table(conn: &Connection) {
     );
 }
 
-// ---------------------------------------------------------------------------
+// --------------------------------------------------------------------
+-------
 // Permission gating
 // ---------------------------------------------------------------------------
 
@@ -276,6 +281,7 @@ pub(crate) fn perm_check(
         Some("allow_project") => PermDecision::AllowProject,
         Some("allow_session") => PermDecision::AllowSession,
         _ => PermDecision::Ask, // safe default when nothing is configured
+
     })
 }
 
@@ -328,7 +334,8 @@ fn log_execution(conn: &Connection, tool: &str, agent_id: &str, session_id: &str
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             id,
-            tool,
+            t
+ool,
             agent_id,
             session_id,
             duration_ms as i64,
@@ -383,7 +390,8 @@ fn arg_str(args: &HashMap<String, serde_json::Value>, key: &str) -> Result<Strin
 // ---------------------------------------------------------------------------
 // Phase 4 / Phase 8 adapters.
 //
-// The helpers below call the Phase 4/8 functions, which now exist
+// The helpers below call t
+he Phase 4/8 functions, which now exist
 // (`crate::workspace`, `crate::terminal`, `crate::build`). Signatures were
 // reconciled at integration time (2026-10-06): Phase 4 takes `&Path` roots,
 // so these adapters convert the `&str` roots used by the tool layer.
@@ -432,7 +440,8 @@ fn ad_exec_command(command: &str, cwd: &str, timeout_secs: u64) -> Result<serde_
     })
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)
+]
 fn ad_build_start(root: &str, target: &str) -> Result<serde_json::Value, String> {
     // build_start_impl reads its AppHandle from the engine global set by
     // init_build_engine; fails honestly if the engine was never initialized.
@@ -486,7 +495,8 @@ pub fn tool_handshake(app: tauri::AppHandle, session_id: String) -> Result<Hands
             manifest.unavailable.push(def.name.clone());
             continue;
         }
-        match perm_check(&app, &agent_id, &def.name) {
+        mat
+ch perm_check(&app, &agent_id, &def.name) {
             Ok(PermDecision::Deny) => manifest.restricted.push(def.name.clone()),
             Ok(PermDecision::Ask) => manifest.requires_approval.push(def.name.clone()),
             Ok(_) => manifest.available.push(def.name.clone()),
@@ -531,7 +541,8 @@ fn handshake_prompt(manifest: &CapabilityManifest) -> String {
            results, or test results. If a tool was not executed, say so.\n\
          - Do not claim a tool is unavailable when this manifest lists it\n\
            as available or requiring approval.\n\
-         - Do not claim to have performed an operation unless the executor\n\
+  
+       - Do not claim to have performed an operation unless the executor\n\
            returned success for it.\n\
          - Tool calls requiring approval return a gate, not a result; wait\n\
            for the TOOL RESULT that follows the user's decision.\n\
@@ -590,7 +601,8 @@ pub fn tool_execute(
             let r = ToolResult::gate(
                 &tool,
                 "denied",
-                &format!("tool '{}' is denied for agent '{}'", tool, agent_id),
+    
+            &format!("tool '{}' is denied for agent '{}'", tool, agent_id),
                 false,
                 false,
             );
@@ -644,7 +656,8 @@ pub fn tool_execute(
     let args: HashMap<String, serde_json::Value> =
         serde_json::from_str(&args_json).unwrap_or_default();
 
-    // 5. Dispatch. `user.ask` is the interaction gate: it never blocks Rust;
+    // 5. Dispatch. `us
+er.ask` is the interaction gate: it never blocks Rust;
     //    the frontend renders an inline prompt and resumes the loop.
     let exec: Result<serde_json::Value, String> = match tool.as_str() {
         "user.ask" => {
@@ -687,7 +700,8 @@ pub fn tool_execute(
             let (root, rel) = resolve_root_rel(&root, &rel)?;
             ad_write_file(&root, &rel, &content)
                 .map(|_| serde_json::json!({ "written": rel }))
-        }
+ 
+       }
         "project.create_file" => {
             let root = arg_str(&args, "project_root")?;
             let rel = arg_str(&args, "path")?;
@@ -738,7 +752,8 @@ pub fn tool_execute(
     let result = match exec {
         Ok(output) => ToolResult {
             ok: true,
-            output,
+  
+          output,
             error: None,
             duration_ms,
             needs_approval: false,
