@@ -32,8 +32,12 @@ receives unrestricted filesystem / shell / credential / process capabilities.
 ```sh
 sudo apt update
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-  librsvg2-dev patchelf
+  librsvg2-dev patchelf libsecret-1-dev libglib2.0-dev pkg-config
 ```
+
+**Important**: The `libsecret-1-dev` and related system packages are required for
+OS keyring access (credential storage). Without them, provider API keys and
+other secrets cannot be stored securely.
 
 ## Develop
 
@@ -60,9 +64,11 @@ npm run tauri:build        # produces .deb and .AppImage (bundle.targets)
 ```sh
 npm run typecheck          # TypeScript, renderer
 npm run build:frontend     # Vite production bundle
+cargo check                # Rust backend
+cargo test                 # Rust tests
 ```
 
-Rust verification (`cargo check` / `cargo build`) requires the toolchain and
+Rust verification (`cargo check` / `cargo build` / `cargo test`) requires the toolchain and
 system dependencies above. Status is tracked in `CHECKLIST.md`; anything not
 verified in a given environment is marked **NOT VERIFIED**.
 
