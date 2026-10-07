@@ -5,8 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-import girlDefault from '../../assets/avatar/girl-default.png';
-import boyDefault from '../../assets/avatar/boy-default.png';
+import { GIRL_DEFAULT, BOY_DEFAULT } from '../../assets/avatar/defaults';
 import { AVATAR_GENDER_KEY, type AvatarGender } from './AvatarStatus';
 
 const circle: React.CSSProperties = {
@@ -48,14 +47,14 @@ export function AvatarPicker({ onToast }: { onToast: (t: string) => void }): Rea
       <span className="gf-muted conn-small">Agent avatar</span>
       <div className="gf-row" style={{ gap: 12, marginTop: 6 }}>
         <img
-          src={girlDefault}
+          src={GIRL_DEFAULT}
           style={{ ...circle, ...ring('girl') }}
           onClick={() => void pick('girl')}
           title="Her"
           alt="girl avatar"
         />
         <img
-          src={boyDefault}
+          src={BOY_DEFAULT}
           style={{ ...circle, ...ring('boy') }}
           onClick={() => void pick('boy')}
           title="Him"
