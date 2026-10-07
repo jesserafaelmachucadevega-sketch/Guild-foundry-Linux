@@ -126,6 +126,17 @@ const TEMPLATES: ConnectorTemplate[] = [
     bearerPlaceholder: 'Server API key (if required)',
     note: 'API-key servers like transcriptapi.com or web-data-toolkit work here. Some hosted servers use their own OAuth sign-in instead — check the starter pack doc.',
   },
+  {
+    id: 'music',
+    name: 'Music Generation',
+    tagline: 'Have the agent compose full songs — vocals, lyrics, any genre.',
+    auth: 'bearer',
+    urlHint: '',
+    urlPlaceholder: 'Paste your music MCP server URL (see starter pack doc)',
+    bearerLabel: 'API key',
+    bearerPlaceholder: 'AIMLAPI / PiAPI key',
+    note: 'AIMLAPI wraps Suno, Udio and more behind one key. Suno is the strongest for full songs with vocals (v6, downloads on paid plans).',
+  },
 ];
 
 function errText(e: unknown): string {
