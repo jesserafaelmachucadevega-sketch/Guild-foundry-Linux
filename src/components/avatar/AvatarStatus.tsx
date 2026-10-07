@@ -8,7 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
 
-import { GIRL_DEFAULT, BOY_DEFAULT } from '../../assets/avatar/defaults';
+import { GIRL_DEFAULT } from '../../assets/avatar/girl_default';
+import { BOY_DEFAULT } from '../../assets/avatar/boy_default';
 
 export type AvatarGender = 'girl' | 'boy';
 export type AvatarActivity = 'idle' | 'typing' | 'talking' | 'waiting';
@@ -19,6 +20,32 @@ const DEFAULT_STILL: Record<AvatarGender, string> = {
 };
 
 export const AVATAR_GENDER_KEY = 'avatar.gender';
+export const AVATAR_CUSTOM_KEY = 'avatar.custom';
+
+/** Custom portrait (upload or model redesign) overrides the default. */
+async function customPortrait(): Promise<string | null> {
+  try {
+    const flag = await invoke<string | null>('settings_get', { key: AVATAR_CUSTOM_KEY });
+    if (flag !== '1') return null;
+    const dir = await appDataDir();
+    return convertFileSrc(await join(dir, 'avatars', 'custom.png'));
+  } catch {
+    return null;
+  }
+}
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+/** Subscribe to avatar changes (upload, redesign, clear). */
+export function onAvatarChange(fn: Listener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+export function emitAvatarChange(): void {
+  listeners.forEach((f) => f());
+}
 
 /** Activity clips live in app-data/avatars (downloaded, not bundled). */
 async function clipPath(gender: AvatarGender, activity: AvatarActivity): Promise<string | null> {
@@ -46,6 +73,22 @@ interface Props {
 export function AvatarStatus({ gender, activity, size = 96, title }: Props): React.ReactElement {
   const [clip, setClip] = useState<string | null>(null);
   const [clipOk, setClipOk] = useState(true);
+  const [still, setStill] = useState<string>(DEFAULT_STILL[gender]);
+
+  useEffect(() => {
+    let live = true;
+    const read = () => {
+      void customPortrait().then((c) => {
+        if (live) setStill(c ?? DEFAULT_STILL[gender]);
+      });
+    };
+    read();
+    const off = onAvatarChange(read);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [gender]);
 
   useEffect(() => {
     let live = true;
@@ -87,7 +130,7 @@ export function AvatarStatus({ gender, activity, size = 96, title }: Props): Rea
       />
     );
   }
-  return <img src={DEFAULT_STILL[gender]} style={style} title={title} alt="agent avatar" />;
+  return <img src={still} style={style} title={title} alt="agent avatar" />;
 }
 
 /** Read the user's avatar choice (defaults to girl). */
