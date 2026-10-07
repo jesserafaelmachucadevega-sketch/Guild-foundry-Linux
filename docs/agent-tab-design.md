@@ -84,9 +84,10 @@ discipline.
   (e.g. `media.generate_image`) default to Ask every time.
 
 ### 4.5 Media rendering contract
-- `media.generate_image` returns `{ path, url, model, seed, bytes }`. The conversation
-  pane renders `output.path` as an image via Tauri `convertFileSrc` (local file —
-  survives remote URL expiry). Any future media tool follows the same contract:
+- `media.generate_image` returns `{ path, url, model, seed, bytes }`; `media.generate_video`
+  returns `{ path, url, model, duration_secs, bytes }`. The conversation pane renders
+  `output.path` as an image (`convertFileSrc`) or video (`<video>` tag) — local files,
+  surviving remote URL expiry. Any future media tool follows the same contract:
   absolute local path in `output.path`, remote URL in `output.url`.
 
 
