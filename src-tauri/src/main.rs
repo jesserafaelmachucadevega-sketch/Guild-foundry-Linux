@@ -23,6 +23,7 @@ mod memory;
 mod os_info;
 mod providers;
 mod research;
+mod scheduler;
 mod secrets;
 mod security;
 mod settings;
@@ -118,6 +119,8 @@ fn main() {
             if let Err(e) = build_tray(app.handle()) {
                 eprintln!("tray setup failed: {}", e);
             }
+            // Phase 14: start the scheduled-task ticker.
+            scheduler::start_ticker(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -273,6 +276,16 @@ fn main() {
             // Phase 13 — media: voice (mic transcription, read-aloud)
             media::media_transcribe_mic,
             media::media_speak_text,
+            // Phase 14 — scheduled agent runs
+            scheduler::scheduler_list,
+            scheduler::scheduler_create,
+            scheduler::scheduler_update,
+            scheduler::scheduler_delete,
+            scheduler::scheduler_set_enabled,
+            scheduler::scheduler_run_now,
+            scheduler::scheduler_complete,
+            scheduler::scheduler_notify,
+            scheduler::scheduler_grant_session,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Guild Foundry AI");
