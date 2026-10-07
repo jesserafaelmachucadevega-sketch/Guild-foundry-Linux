@@ -139,6 +139,7 @@ fn main() {
             providers::provider_chat_cancel,
             providers::provider_router_suggest,
             ratelimit::ratelimit_status,
+            ratelimit::ratelimit_quota_notice,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
