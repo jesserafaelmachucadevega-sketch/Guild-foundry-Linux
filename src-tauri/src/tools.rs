@@ -193,6 +193,22 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "interaction".into(),
             ready: true, // handled directly in this module
         },
+        ToolDef {
+            name: "media.generate_image".into(),
+            description: "Generate an image from a text prompt via the Fal API (default FLUX 2 Dev, ~$0.025/image). Works with ANY loaded model — local or frontier — because generation happens server-side. The image is saved locally and the result carries its file path; the harness renders it for the user. Requires a Fal API key (Connections > Image generation). Each call costs real money: keep prompts deliberate."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "prompt": { "type": "string", "description": "Detailed image prompt. Be specific: subject, style, lighting, composition." },
+                    "model": { "type": "string", "description": "Fal model id override, e.g. fal-ai/flux-2-dev, fal-ai/flux-2-pro, fal-ai/stable-diffusion-xl. Defaults to the media.image_model setting, then fal-ai/flux-2-dev." },
+                    "image_size": { "type": "string", "description": "square_hd (default), square, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9." }
+                }),
+                &["prompt"],
+            ),
+            risk: RiskLevel::Moderate, // costs money per call; permission gate applies
+            domain: "media".into(),
+            ready: true, // Phase 13 (crate::media)
+        },
     ]
 }
 
@@ -729,6 +745,12 @@ pub fn tool_execute(
                 return Err("cwd must be an absolute path".to_string());
             }
             ad_exec_command(&command, &cwd, timeout_secs)
+        }
+        "media.generate_image" => {
+            let prompt = arg_str(&args, "prompt")?;
+            let model = args.get("model").and_then(|v| v.as_str());
+            let image_size = args.get("image_size").and_then(|v| v.as_str());
+            crate::media::generate_image(&app, &prompt, model, image_size)
         }
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
     };
