@@ -15,6 +15,13 @@
   font-size: 1.05rem;
 }
 
+.conn-category {
+  margin: 14px 0 8px;
+  font-size: 0.95rem;
+  color: var(--gf-tan, #d2b48c);
+  font-weight: 600;
+}
+
 .conn-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
