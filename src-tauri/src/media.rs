@@ -162,6 +162,17 @@ pub fn speak(
     }
     let key = fal_key()?;
 
+    // Tool arg wins; then the media.tts_voice setting; then Kokoro's default.
+    let setting_voice: Option<String> =
+        crate::settings::settings_get(app.clone(), "media.tts_voice".to_string())
+            .ok()
+            .flatten();
+    let voice = voice
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty())
+        .or(setting_voice)
+        .filter(|s| !s.trim().is_empty());
+
     tauri::async_runtime::block_on(async {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
@@ -169,7 +180,7 @@ pub fn speak(
             .map_err(|e| format!("HTTP client failed: {}", e))?;
 
         let mut body = serde_json::json!({ "text": text });
-        if let Some(v) = voice {
+        if let Some(v) = voice.as_deref() {
             body["voice"] = serde_json::json!(v);
         }
         let res = post_json(
