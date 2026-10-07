@@ -310,7 +310,6 @@ that reads the result.
   screenshots in the trace?
 
 ## 9. Voice I/O (built 2026-10-07)
-
 Both directions, same Fal key as image/video (no browser voices anywhere):
 
 - **Agent listens** — `media.transcribe` tool (Fal Whisper, 99+ languages,
@@ -325,3 +324,23 @@ Both directions, same Fal key as image/video (no browser voices anywhere):
   messages are dictated immediately (ConferenceRoom wired; Agent tab reuses the
   same `VoiceControls` + `speakText` helpers).
 - **Copy**: every message bubble already carries a Copy button.
+
+## 10. Scheduled agent runs (built 2026-10-07)
+
+The "works while you sleep" half: cron-like tasks that run a tool-calling
+agent headlessly and notify the user with the result.
+
+- **Schedules**: repeat every N minutes (min 5) or daily at a local HH:MM.
+  No cron-expression dependency; covers watches, digests, reminders.
+- **Rust** (`scheduler.rs`): SQLite `scheduled_tasks` table, a 60s background
+  ticker, `next_run_at` advanced *before* firing so a slow run can't double-fire.
+- **Headless execution**: on due, Rust emits `scheduler-task-due`; the
+  frontend `SchedulerRunner` runs `runToolLoop` with no UI (25-turn cap,
+  20-minute safety net), records the summary via `scheduler_complete`, and
+  fires a desktop notification.
+- **Auto-approve**: per-task opt-in. The runner requests a session grant
+  (`scheduler_grant_session`); the tool permission check honors it for Ask-type
+  decisions. An explicit **Deny always wins** — grants can never override it.
+  Grants are in-memory only and revoked when the run ends.
+- **UI**: new `Sched.` nav section — list, create/edit, pause/resume, run now,
+  last-run status and summary.
