@@ -191,6 +191,15 @@ body {
   line-height: 1;
 }
 .gf-icon-btn:hover { color: var(--gf-gold); border-color: var(--gf-gold); }
+.gf-icon-btn.gf-rec {
+  color: #e05a4e;
+  border-color: #e05a4e;
+  animation: gf-pulse 1.2s ease-in-out infinite;
+}
+@keyframes gf-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 
 .gf-bubble-body {
   padding: 10px 12px;
