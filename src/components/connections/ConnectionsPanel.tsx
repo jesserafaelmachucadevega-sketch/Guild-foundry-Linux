@@ -212,6 +212,132 @@ function PermSelect({
   );
 }
 
+const FAL_KEYRING_KEY = 'gfa-media-fal-key';
+const IMAGE_MODELS = [
+  { id: 'fal-ai/flux-2-dev', label: 'FLUX 2 Dev — ~$0.025/image, best value' },
+  { id: 'fal-ai/flux-2-pro', label: 'FLUX 2 Pro — ~$0.05/image, highest quality' },
+  { id: 'fal-ai/stable-diffusion-xl', label: 'SDXL — ~$0.003/image, cheap drafts' },
+];
+
+function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [key, setKey] = useState('');
+  const [hasKey, setHasKey] = useState(false);
+  const [model, setModel] = useState(IMAGE_MODELS[0].id);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void invoke<string[]>('secret_list_keys')
+      .then((keys) => {
+        if (live) setHasKey(keys.includes(FAL_KEYRING_KEY));
+      })
+      .catch(() => {});
+    void invoke<string | null>('settings_get', { key: 'media.image_model' })
+      .then((v) => {
+        if (live && v && IMAGE_MODELS.some((m) => m.id === v)) setModel(v);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const saveKey = async () => {
+    if (!key.trim()) {
+      onToast('Paste your Fal API key first (fal.ai dashboard)');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('secret_set', { key: FAL_KEYRING_KEY, value: key.trim() });
+      setHasKey(true);
+      setKey('');
+      onToast('Fal API key saved to the OS keychain');
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeKey = async () => {
+    if (!window.confirm('Remove the Fal API key? Image generation will stop working.')) return;
+    try {
+      await invoke('secret_delete', { key: FAL_KEYRING_KEY });
+      setHasKey(false);
+      onToast('Fal API key removed');
+    } catch (e) {
+      onToast(errText(e));
+    }
+  };
+
+  const changeModel = async (id: string) => {
+    const prev = model;
+    setModel(id);
+    try {
+      await invoke('settings_set', { key: 'media.image_model', value: id });
+    } catch (e) {
+      setModel(prev);
+      onToast(errText(e));
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Image generation</strong>
+        {hasKey ? (
+          <span className="conn-badge conn-badge-ok">Key saved</span>
+        ) : (
+          <span className="conn-badge">No key</span>
+        )}
+      </div>
+      <p className="conn-tagline">
+        Any model — local or frontier — can generate images through one API.
+        The agent calls <span className="conn-mono">media.generate_image</span> with
+        a prompt; Fal renders it and the image appears in the conversation.
+      </p>
+      {hasKey ? (
+        <button className="gf-btn gf-btn-sm conn-danger" onClick={() => void removeKey()}>
+          Remove key
+        </button>
+      ) : (
+        <div className="conn-keyrow">
+          <input
+            type="password"
+            className="gf-input conn-mono"
+            value={key}
+            placeholder="Fal API key (fal.ai)"
+            onChange={(e) => setKey(e.target.value)}
+          />
+          <button className="gf-btn gf-btn-sm" onClick={() => void saveKey()} disabled={busy}>
+            Save
+          </button>
+        </div>
+      )}
+      <label className="gf-label conn-modellabel">
+        <span className="gf-muted conn-small">Model</span>
+        <select
+          className="gf-input"
+          value={model}
+          onChange={(e) => void changeModel(e.target.value)}
+        >
+          {IMAGE_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <PermSelect domain="media" onToast={onToast} />
+      <p className="conn-note">
+        Every generation costs real money. Default is Ask every time, so the
+        agent confirms with you before spending.
+      </p>
+    </div>
+  );
+}
+
 export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
   const [servers, setServers] = useState<McpServerView[]>([]);
   const [connecting, setConnecting] = useState<ConnectorTemplate | null>(null);
@@ -376,6 +502,7 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
             </p>
             <PermSelect domain="shell" onToast={onToast} />
           </div>
+          <ImageGenCard onToast={onToast} />
         </div>
 
         <h3 className="conn-section">Connect a service</h3>
