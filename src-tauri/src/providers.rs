@@ -1257,7 +1257,8 @@ pub async fn provider_chat_complete(
 ) -> Result<CompleteResult, String> {
     let started = Instant::now();
     // Rate limit + daily quota guard: fail fast before spending a request.
-    crate::ratelimit::acquire(&app, &provider_id).await?;
+    // Applies to free models only; paid models bypass.
+    crate::ratelimit::acquire(&app, &provider_id, &model_id).await?;
     let cfg = load_provider(&app, &provider_id)?;
     let key = crate::secrets::keyring_get(&provider_key_name(&cfg.id));
     let target = build_chat_target(&cfg, key.as_deref(), &model_id, &messages, &params, false)?;
@@ -1547,7 +1548,8 @@ pub fn provider_chat_stream(
     // reports through the `provider://chat-chunk` event.
     tauri::async_runtime::spawn(async move {
         // Rate limit + daily quota guard before any network call.
-        if let Err(e) = crate::ratelimit::acquire(&app, &provider_id).await {
+        // Applies to free models only; paid models bypass.
+        if let Err(e) = crate::ratelimit::acquire(&app, &provider_id, &model_id).await {
             emit_chunk(
                 &app,
                 &ChunkPayload {
