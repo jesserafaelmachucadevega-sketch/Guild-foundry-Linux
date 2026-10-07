@@ -36,14 +36,16 @@ use tauri::Manager;
 
 #[tauri::command]
 fn window_set_compact(window: tauri::WebviewWindow, compact: bool) -> Result<(), String> {
-    use tauri::dpi::PhysicalSize;
+    use tauri::dpi::LogicalSize;
+    // Logical (not physical) pixels so the window is a consistent size on
+    // HiDPI displays.
     let size = if compact {
-        PhysicalSize { width: 480, height: 800 }
+        LogicalSize { width: 480.0, height: 800.0 }
     } else {
-        PhysicalSize { width: 1440, height: 900 }
+        LogicalSize { width: 1440.0, height: 900.0 }
     };
     window
-        .set_size(tauri::Size::Physical(size))
+        .set_size(tauri::Size::Logical(size))
         .map_err(|e| e.to_string())
 }
 
@@ -61,7 +63,8 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
     let icon = tauri::image::Image::from_path(&icon_path)?;
 
-    let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show", true, None::<&
+str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
@@ -103,9 +106,13 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             // Phase 1: initialize SQLite (runs migrations) before any command.
+            // Fail fast: continuing without a database would make every DB-backed
+            // command fail later with confusing errors.
             match db::init_db(app.handle()) {
                 Ok(path) => println!("database ready at {:?}", path),
-                Err(e) => eprintln!("database init failed: {}", e),
+                Err(e) => {
+                    return Err(format!("database init failed: {}", e));
+                }
             }
             if let Err(e) = build_tray(app.handle()) {
                 eprintln!("tray setup failed: {}", e);
@@ -116,7 +123,8 @@ fn main() {
             window_set_compact,
             os_info::detect_environment,
             settings::settings_save_prompts,
-            settings::settings_load_prompts,
+            settings::settings_load_prom
+pts,
             settings::settings_set,
             settings::settings_get,
             // Phase 2 — providers + secrets
@@ -171,7 +179,8 @@ fn main() {
             git::git_push,
             // Phase 5 — agents / builder state machine
             agents::agent_list,
-            agents::run_start,
+            agents::run_star
+t,
             agents::run_status,
             agents::run_cancel,
             agents::run_transition,
@@ -228,6 +237,7 @@ fn main() {
             build::artifact_get,
             build::artifact_verify,
             build::artifact_export,
+    
             build::release_create,
             // Phase 9 — security
             security::constitution_text,

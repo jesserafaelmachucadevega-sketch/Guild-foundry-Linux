@@ -70,13 +70,17 @@ export async function streamChat(
   cb: StreamCallbacks,
 ): Promise<() => void> {
   if (!isDesktop()) {
-    cb.onError(new Error('Desktop Capability Required'));
+    cb.onErro
+r(new Error('Desktop Capability Required'));
     return () => undefined;
   }
   const streamId = newStreamId();
   let settled = false;
 
-  const unlisten = await listen<ChunkPayload>('provider://chat-chunk', (event) => {
+  // Declare before registering so the callback can safely unlisten even if a
+  // chunk event fires in the window before `await listen` resolves.
+  let unlisten: () => void = () => undefined;
+  unlisten = await listen<ChunkPayload>('provider://chat-chunk', (event) => {
     const p = event.payload;
     if (!p || p.stream_id !== streamId || settled) return;
     if (p.error) {
