@@ -308,3 +308,20 @@ that reads the result.
   argument values for privacy?
 - For the browser-use tool: full visible Chromium window, or headless with
   screenshots in the trace?
+
+## 9. Voice I/O (built 2026-10-07)
+
+Both directions, same Fal key as image/video (no browser voices anywhere):
+
+- **Agent listens** — `media.transcribe` tool (Fal Whisper, 99+ languages,
+  auto-detect; `audio_url` or `audio_path`, optional `translate` task).
+  Frontend mic flow: `VoiceControls` records via MediaRecorder →
+  `media_transcribe_mic` command → transcript lands in the chat input.
+- **Agent speaks** — `media.speak` tool and `media_speak_text` command via
+  **Kokoro** (`fal-ai/kokoro/american-english`): natural human speech, never the
+  robotic browser voice. Audio saved to app-data `media/`, played with a plain
+  HTMLAudioElement.
+- **Mute/unmute**: `media.speech_enabled` setting. When unmuted, new agent
+  messages are dictated immediately (ConferenceRoom wired; Agent tab reuses the
+  same `VoiceControls` + `speakText` helpers).
+- **Copy**: every message bubble already carries a Copy button.
