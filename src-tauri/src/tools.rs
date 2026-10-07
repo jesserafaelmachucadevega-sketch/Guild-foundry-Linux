@@ -226,6 +226,29 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "media".into(),
             ready: true, // Phase 13 (crate::media)
         },
+        ToolDef {
+            name: "artifact.create".into(),
+            description: "Create an interactive artifact the user sees inline in the conversation: poll (vote buttons), checklist (toggles), slider, card, sticky (sticky note), whiteboard (board of positioned sticky notes). The artifact is attached to your reply and rendered by the harness. Use for anything the user should see, touch, or decide on — not plain text."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "kind": { "type": "string", "description": "poll | checklist | slider | card | sticky | whiteboard" },
+                    "title": { "type": "string", "description": "Artifact title / poll question / board name." },
+                    "options": { "type": "array", "items": { "type": "string" }, "description": "poll: 2+ options." },
+                    "items": { "type": "array", "items": { "type": "object" }, "description": "checklist: [{label, checked}]." },
+                    "min": { "type": "number", "description": "slider minimum." },
+                    "max": { "type": "number", "description": "slider maximum." },
+                    "value": { "type": "number", "description": "slider initial value." },
+                    "body": { "type": "string", "description": "card / sticky text content." },
+                    "color": { "type": "string", "description": "sticky / note background color, CSS hex." },
+                    "notes": { "type": "array", "items": { "type": "object" }, "description": "whiteboard: [{x, y (0-100), color?, title?, body?}]." }
+                }),
+                &["kind", "title"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "interaction".into(),
+            ready: true,
+        },
     ]
 }
 
@@ -411,6 +434,107 @@ fn arg_str(args: &HashMap<String, serde_json::Value>, key: &str) -> Result<Strin
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| format!("missing or invalid string argument: {}", key))
+}
+
+/// Validate an `artifact.create` payload and return the normalized artifact.
+/// The frontend appends the returned artifact to the assistant message's
+/// `artifacts` array; `ArtifactRenderer` renders it inline.
+fn ad_create_artifact(args: &HashMap<String, serde_json::Value>) -> Result<serde_json::Value, String> {
+    let kind = arg_str(args, "kind")?;
+    let title = arg_str(args, "title")?;
+    if title.trim().is_empty() {
+        return Err("title must not be empty".to_string());
+    }
+    let mut out = serde_json::json!({ "kind": kind, "title": title });
+
+    let str_list = |key: &str| -> Vec<String> {
+        args.get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    match kind.as_str() {
+        "poll" => {
+            let options = str_list("options");
+            if options.len() < 2 {
+                return Err("poll requires at least 2 options".to_string());
+            }
+            out["options"] = serde_json::json!(options);
+        }
+        "checklist" => {
+            let items: Vec<serde_json::Value> = args
+                .get("items")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| {
+                            let label = v.get("label")?.as_str()?.to_string();
+                            let checked = v.get("checked").and_then(|c| c.as_bool()).unwrap_or(false);
+                            Some(serde_json::json!({ "label": label, "checked": checked }))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if items.is_empty() {
+                return Err("checklist requires at least 1 item".to_string());
+            }
+            out["items"] = serde_json::json!(items);
+        }
+        "slider" => {
+            let min = args.get("min").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let max = args.get("max").and_then(|v| v.as_f64()).unwrap_or(100.0);
+            let value = args.get("value").and_then(|v| v.as_f64()).unwrap_or(min);
+            if max <= min {
+                return Err("slider max must exceed min".to_string());
+            }
+            out["min"] = serde_json::json!(min);
+            out["max"] = serde_json::json!(max);
+            out["value"] = serde_json::json!(value.clamp(min, max));
+        }
+        "card" => {
+            let body = arg_str(args, "body")?;
+            out["body"] = serde_json::json!(body);
+        }
+        "sticky" => {
+            if let Some(body) = args.get("body").and_then(|v| v.as_str()) {
+                out["body"] = serde_json::json!(body);
+            }
+            if let Some(color) = args.get("color").and_then(|v| v.as_str()) {
+                out["color"] = serde_json::json!(color);
+            }
+        }
+        "whiteboard" => {
+            let notes: Vec<serde_json::Value> = args
+                .get("notes")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .enumerate()
+                        .map(|(i, v)| {
+                            let x = v.get("x").and_then(|n| n.as_f64()).unwrap_or(10.0).clamp(0.0, 100.0);
+                            let y = v.get("y").and_then(|n| n.as_f64()).unwrap_or(10.0).clamp(0.0, 100.0);
+                            serde_json::json!({
+                                "id": v.get("id").and_then(|s| s.as_str()).unwrap_or(&format!("n{}", i)).to_string(),
+                                "x": x,
+                                "y": y,
+                                "color": v.get("color").and_then(|s| s.as_str()).unwrap_or("#fff7ad"),
+                                "title": v.get("title").and_then(|s| s.as_str()).unwrap_or(""),
+                                "body": v.get("body").and_then(|s| s.as_str()).unwrap_or(""),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            out["notes"] = serde_json::json!(notes);
+        }
+        other => return Err(format!("unknown artifact kind: {}", other)),
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -776,6 +900,7 @@ pub fn tool_execute(
             let aspect_ratio = args.get("aspect_ratio").and_then(|v| v.as_str());
             crate::media::generate_video(&app, &prompt, model, duration_secs, aspect_ratio)
         }
+        "artifact.create" => ad_create_artifact(&args).map(|a| serde_json::json!({ "artifact": a })),
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
     };
 
