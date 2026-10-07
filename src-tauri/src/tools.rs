@@ -790,24 +790,31 @@ pub fn tool_execute(
             return Ok(r);
         }
         PermDecision::Ask | PermDecision::AllowProject | PermDecision::AllowSession => {
-            // ask_*: the frontend raises the Phase 5 approval gate.
-            // allow_project / allow_session: project/session binding is enforced
-            // by Phase 5's gate (the tool loop passes the live session_id);
-            // until that gate lands, treat as requiring approval — safe default.
-            let r = ToolResult::gate(
-                &tool,
-                "needs_approval",
-                &format!(
-                    "tool '{}' requires approval for agent '{}' (permission mode: {:?})",
-                    tool, agent_id, decision
-                ),
-                true,
-                false,
-            );
-            if let Ok(conn) = open_conn(&app) {
-                log_execution(&conn, &tool, &agent_id, &session_id, 0, false, r.error.as_deref());
+            // Scheduled headless runs with a user-granted auto-approve may
+            // proceed without the interactive modal. An explicit Deny (above)
+            // always wins — grants can never override it.
+            if crate::scheduler::session_granted(&session_id) {
+                // fall through to dispatch
+            } else {
+                // ask_*: the frontend raises the Phase 5 approval gate.
+                // allow_project / allow_session: project/session binding is enforced
+                // by Phase 5's gate (the tool loop passes the live session_id);
+                // until that gate lands, treat as requiring approval — safe default.
+                let r = ToolResult::gate(
+                    &tool,
+                    "needs_approval",
+                    &format!(
+                        "tool '{}' requires approval for agent '{}' (permission mode: {:?})",
+                        tool, agent_id, decision
+                    ),
+                    true,
+                    false,
+                );
+                if let Ok(conn) = open_conn(&app) {
+                    log_execution(&conn, &tool, &agent_id, &session_id, 0, false, r.error.as_deref());
+                }
+                return Ok(r);
             }
-            return Ok(r);
         }
         PermDecision::AlwaysAllow => { /* proceed to dispatch */ }
     }
