@@ -6,10 +6,10 @@ edition = "2021"
 rust-version = "1.77"
 
 [build-dependencies]
-tauri-build = { version = "2.12.1", features = [] }
+tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.1", features = ["tray-icon"] }
+tauri = { version = "2.12.1", features = ["tray-icon", "image-png"] }
 tauri-plugin-sql = { version = "2.5.0", features = ["sqlite"] }
 tauri-plugin-store = "2.5.0"
 tauri-plugin-notification = "2.5.1"

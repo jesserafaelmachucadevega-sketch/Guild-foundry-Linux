@@ -16,6 +16,7 @@
 // Global (non-agent) permission levels reuse `permissions` with the sentinel
 // key (agent_id = '', tool = '*').
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -455,9 +456,10 @@ impl McpClient {
         preq = self.apply_auth(preq);
         let presp = preq.send().await.map_err(|e| e.to_string())?;
         if !presp.status().is_success() && presp.status().as_u16() != 202 {
+            let status = presp.status();
             let body = presp.text().await.unwrap_or_default();
             let head: String = body.chars().take(300).collect();
-            return Err(format!("MCP POST {}: {}", presp.status(), head));
+            return Err(format!("MCP POST {}: {}", status, head));
         }
         if !expect_response {
             return Ok(None);

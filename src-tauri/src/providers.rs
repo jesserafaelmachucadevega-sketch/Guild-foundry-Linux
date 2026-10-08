@@ -61,7 +61,7 @@ fn cancel_map() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-struct ProviderSummary {
+pub struct ProviderSummary {
     id: String,
     name: String,
     kind: String,
@@ -76,7 +76,7 @@ struct ProviderSummary {
 }
 
 #[derive(Serialize)]
-struct ModelInfo {
+pub struct ModelInfo {
     id: String,
     name: String,
     provider_id: String,
@@ -99,7 +99,7 @@ struct Capabilities {
 }
 
 #[derive(Serialize)]
-struct HandshakeReport {
+pub struct HandshakeReport {
     provider_id: String,
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,20 +114,20 @@ struct HandshakeReport {
 }
 
 #[derive(Serialize)]
-struct RouterSuggestion {
+pub struct RouterSuggestion {
     provider_id: String,
     model_id: String,
     reason: String,
 }
 
 #[derive(Serialize)]
-struct CompleteResult {
+pub struct CompleteResult {
     content: String,
     latency_ms: u64,
 }
 
 #[derive(Deserialize)]
-struct ChatMsg {
+pub struct ChatMsg {
     role: String,
     content: String,
 }
@@ -135,7 +135,7 @@ struct ChatMsg {
 /// camelCase: these keys come from the TypeScript ChatParams contract.
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct ChatParams {
+pub struct ChatParams {
     system_prompt: Option<String>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
@@ -587,7 +587,7 @@ async fn fetch_and_store_models(
                 "The models endpoint did not answer within 30 seconds.".to_string(),
             )
         })?
-        .map_err(net_error)?;
+        .map_err(|e| net_error(&e))?;
 
     let status = resp.status();
     if !status.is_success() {

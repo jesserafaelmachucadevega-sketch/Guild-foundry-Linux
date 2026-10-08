@@ -977,7 +977,7 @@ fn halt_with_report(
                 let project_id: Option<String> = conn
                     .query_row(
                         "SELECT project_id FROM builds WHERE id = ?1",
-                        rusqlite::params![build_id.as_str()],
+                        rusqlite::params![build_id],
                         |r| r.get(0),
                     )
                     .ok();
@@ -1406,7 +1406,7 @@ fn record_test_row(build_id: Option<&str>, name: &str, status: &str, detail: &st
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize, Clone)]
-struct TemplateMeta {
+pub struct TemplateMeta {
     id: String,
     name: String,
     stack: String,
@@ -1913,7 +1913,7 @@ fn store_artifact_file(store: &Path, build_id: &str, src: &Path) -> Result<PathB
 }
 
 #[derive(Serialize, Clone)]
-struct ArtifactMeta {
+pub struct ArtifactMeta {
     id: String,
     build_id: Option<String>,
     kind: String,
@@ -2023,7 +2023,7 @@ fn write_minimal_zip(zip_path: &Path, entry_name: &str, data: &[u8]) -> Result<(
 }
 
 #[derive(Serialize, Clone)]
-struct ReleaseMeta {
+pub struct ReleaseMeta {
     id: String,
     build_id: String,
     version: String,
@@ -2036,7 +2036,7 @@ struct ReleaseMeta {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-struct BuildStatus {
+pub struct BuildStatus {
     state: String,
     log_tail: Vec<String>,
     attempts: u32,
@@ -2124,46 +2124,56 @@ pub(crate) fn artifact_list(
     init_build_engine(&app)?;
     let conn = db_conn()?;
     let rows: Vec<ArtifactMeta> = if let Some(bid) = build_id {
-        let mut stmt = conn
-            .prepare("SELECT id, kind, path, sha256, created_at FROM artifacts WHERE path LIKE ?1 ORDER BY created_at DESC")
-            .map_err(|e| format!("artifact query failed: {e}"))?;
         let like = format!("%artifacts/{bid}/%");
-        stmt.query_map(rusqlite::params![like], |r| {
-            Ok(ArtifactMeta {
-                id: r.get(0)?,
-                build_id: Some(bid.clone()),
-                kind: r.get(1)?,
-                path: r.get(2)?,
-                sha256: r.get(3)?,
-                created_at: r.get(4)?,
-            })
-        })
-        .map_err(|e| format!("artifact rows failed: {e}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("artifact rows failed: {e}"))?
+        let collected = {
+            let mut stmt = conn
+                .prepare("SELECT id, kind, path, sha256, created_at FROM artifacts WHERE path LIKE ?1 ORDER BY created_at DESC")
+                .map_err(|e| format!("artifact query failed: {e}"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![like], |r| {
+                    Ok(ArtifactMeta {
+                        id: r.get(0)?,
+                        build_id: Some(bid.clone()),
+                        kind: r.get(1)?,
+                        path: r.get(2)?,
+                        sha256: r.get(3)?,
+                        created_at: r.get(4)?,
+                    })
+                })
+                .map_err(|e| format!("artifact rows failed: {e}"))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("artifact rows failed: {e}"))?;
+            rows
+        };
+        collected
     } else {
-        let mut stmt = conn
-            .prepare("SELECT id, kind, path, sha256, created_at FROM artifacts ORDER BY created_at DESC LIMIT 200")
-            .map_err(|e| format!("artifact query failed: {e}"))?;
-        stmt.query_map(rusqlite::params![], |r| {
-            Ok(ArtifactMeta {
-                id: r.get(0)?,
-                build_id: None,
-                kind: r.get(1)?,
-                path: r.get(2)?,
-                sha256: r.get(3)?,
-                created_at: r.get(4)?,
-            })
-        })
-        .map_err(|e| format!("artifact rows failed: {e}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("artifact rows failed: {e}"))?
+        let collected = {
+            let mut stmt = conn
+                .prepare("SELECT id, kind, path, sha256, created_at FROM artifacts ORDER BY created_at DESC LIMIT 200")
+                .map_err(|e| format!("artifact query failed: {e}"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![], |r| {
+                    Ok(ArtifactMeta {
+                        id: r.get(0)?,
+                        build_id: None,
+                        kind: r.get(1)?,
+                        path: r.get(2)?,
+                        sha256: r.get(3)?,
+                        created_at: r.get(4)?,
+                    })
+                })
+                .map_err(|e| format!("artifact rows failed: {e}"))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("artifact rows failed: {e}"))?;
+            rows
+        };
+        collected
     };
     Ok(rows)
 }
 
 #[derive(Serialize)]
-struct ArtifactDetail {
+pub struct ArtifactDetail {
     id: String,
     kind: String,
     path: Option<String>,
@@ -2195,7 +2205,7 @@ pub(crate) fn artifact_get(
 }
 
 #[derive(Serialize)]
-struct VerifyResult {
+pub struct VerifyResult {
     ok: bool,
     expected: Option<String>,
     actual: Option<String>,
@@ -2220,7 +2230,7 @@ pub(crate) fn artifact_verify(
 }
 
 #[derive(Serialize)]
-struct ExportResult {
+pub struct ExportResult {
     path: String,
 }
 

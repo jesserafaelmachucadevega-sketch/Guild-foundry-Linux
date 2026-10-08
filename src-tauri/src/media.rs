@@ -13,6 +13,8 @@
 
 use std::time::Duration;
 
+use tauri::Manager;
+
 pub const FAL_KEYRING_KEY: &str = "gfa-media-fal-key";
 pub const DEFAULT_MODEL: &str = "fal-ai/flux-2-dev";
 pub const DEFAULT_VIDEO_MODEL: &str = "fal-ai/wan/v2.7/text-to-video";
@@ -190,11 +192,13 @@ pub fn speak(
     let setting_voice: Option<String> =
         crate::settings::settings_get(app.clone(), "media.tts_voice".to_string())
             .ok()
-            .flatten();
+            .flatten()
+            .and_then(|v| v.as_str().map(|s| s.to_string()));
     let setting_lang: Option<String> =
         crate::settings::settings_get(app.clone(), "media.tts_language".to_string())
             .ok()
-            .flatten();
+            .flatten()
+            .and_then(|v| v.as_str().map(|s| s.to_string()));
     let voice = voice
         .map(|s| s.to_string())
         .filter(|s| !s.trim().is_empty())

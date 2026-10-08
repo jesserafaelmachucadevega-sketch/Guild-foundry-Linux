@@ -302,6 +302,36 @@ fn registry() -> &'static Mutex<HashMap<String, LiveProcess>> {
 
 const LINE_BUFFER_CAP: usize = 2000;
 
+/// Drain one child pipe line-by-line into the ring buffer and the frontend.
+fn spawn_reader<R: Read + Send + 'static>(
+    stream_name: &str,
+    pipe: Option<R>,
+    lines: &Arc<Mutex<VecDeque<String>>>,
+    app: &tauri::AppHandle,
+    id: &str,
+) {
+    let Some(pipe) = pipe else { return };
+    let lines = Arc::clone(lines);
+    let app = app.clone();
+    let id = id.to_string();
+    let stream = stream_name.to_string();
+    thread::spawn(move || {
+        let reader = BufReader::new(pipe);
+        for line in reader.lines() {
+            match line {
+                Ok(text) => {
+                    push_line(&lines, format!("[{}] {}", stream, text));
+                    let _ = app.emit(
+                        "terminal://output",
+                        TermEvent { id: id.clone(), stream: stream.clone(), line: text },
+                    );
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
 fn push_line(lines: &Arc<Mutex<VecDeque<String>>>, line: String) {
     if let Ok(mut q) = lines.lock() {
         if q.len() >= LINE_BUFFER_CAP {
@@ -312,7 +342,7 @@ fn push_line(lines: &Arc<Mutex<VecDeque<String>>>, line: String) {
 }
 
 #[derive(Serialize)]
-struct ProcInfo {
+pub struct ProcInfo {
     id: String,
     cmdline: String,
     pid: u32,
@@ -364,34 +394,10 @@ pub fn term_start(
     let running: Arc<Mutex<bool>> = Arc::new(Mutex::new(true));
 
     // Reader threads: one per stream, pushing lines into the ring buffer and
-    // emitting them to the frontend.
-    for (stream_name, pipe) in [("stdout", stdout_pipe), ("stderr", stderr_pipe)] {
-        if let Some(pipe) = pipe {
-            let lines = Arc::clone(&lines);
-            let app = app.clone();
-            let id = id.clone();
-            let stream = stream_name.to_string();
-            thread::spawn(move || {
-                let reader = BufReader::new(pipe);
-                for line in reader.lines() {
-                    match line {
-                        Ok(text) => {
-                            push_line(&lines, format!("[{}] {}", stream, text));
-                            let _ = app.emit(
-                                "terminal://output",
-                                TermEvent {
-                                    id: id.clone(),
-                                    stream: stream.clone(),
-                                    line: text,
-                                },
-                            );
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-        }
-    }
+    // emitting them to the frontend. `spawn_reader` is generic over the pipe
+    // type because stdout/stderr are distinct concrete stream types.
+    spawn_reader("stdout", stdout_pipe, &lines, &app, &id);
+    spawn_reader("stderr", stderr_pipe, &lines, &app, &id);
 
     // Reaper thread: takes the child handle, waits for exit, flips `running`.
     {

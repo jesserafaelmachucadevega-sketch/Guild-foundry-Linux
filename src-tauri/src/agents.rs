@@ -729,7 +729,7 @@ pub fn approval_gate_check(kind: String, mode: String) -> Result<bool, String> {
     })
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct ApprovalPayload {
     pub approval_id: String,
     pub run_id: String,

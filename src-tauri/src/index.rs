@@ -22,7 +22,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
+use notify::Watcher as _;
 
 use crate::memory::open_db;
 
@@ -406,8 +407,7 @@ pub fn index_watch_start(
         return Ok(()); // already watching
     }
     let (tx, rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
-    let mut watcher =
-        notify::RecommendedWatcher::new(tx, notify::Config::default()).map_err(|e| e.to_string())?;
+    let mut watcher = notify::recommended_watcher(tx).map_err(|e| e.to_string())?;
     watcher
         .watch(
             std::path::Path::new(&project_root),

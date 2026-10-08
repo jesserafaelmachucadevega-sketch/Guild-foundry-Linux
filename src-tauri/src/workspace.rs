@@ -313,7 +313,7 @@ struct SnapshotManifest {
 }
 
 #[derive(Serialize)]
-struct SnapshotInfo {
+pub struct SnapshotInfo {
     id: String,
     label: String,
     created_at: String,
@@ -735,7 +735,7 @@ fn apply_patch_text(original: &str, patch: &str) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-struct FsEntry {
+pub struct FsEntry {
     name: String,
     rel: String,
     is_dir: bool,
@@ -989,7 +989,7 @@ pub fn ws_checkpoints(
 }
 
 #[derive(Serialize)]
-struct SnapshotFile {
+pub struct SnapshotFile {
     rel: String,
     size: u64,
     sha256: String,
@@ -1032,7 +1032,7 @@ pub fn ws_checkpoint_preview(
 }
 
 #[derive(Serialize)]
-struct SnapshotChange {
+pub struct SnapshotChange {
     rel: String,
     kind: String, // "added" | "removed" | "modified"
 }

@@ -80,14 +80,14 @@ async fn run_git(root: &Path, args: &[&str]) -> Result<GitOut, String> {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-struct GitFileStatus {
+pub struct GitFileStatus {
     path: String,
     staged: String,   // porcelain index status char
     worktree: String, // porcelain worktree status char
 }
 
 #[derive(Serialize)]
-struct GitCommit {
+pub struct GitCommit {
     hash: String,
     short: String,
     author: String,
@@ -96,14 +96,14 @@ struct GitCommit {
 }
 
 #[derive(Serialize)]
-struct GitBranch {
+pub struct GitBranch {
     name: String,
     current: bool,
     upstream: String,
 }
 
 #[derive(Serialize)]
-struct GitRemote {
+pub struct GitRemote {
     name: String,
     url: String,
 }

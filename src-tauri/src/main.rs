@@ -41,7 +41,7 @@ use tauri::Manager;
 
 #[tauri::command]
 fn window_set_compact(window: tauri::WebviewWindow, compact: bool) -> Result<(), String> {
-    use tauri::dpi::LogicalSize;
+    use tauri::LogicalSize;
     // Logical (not physical) pixels so the window is a consistent size on
     // HiDPI displays.
     let size = if compact {
@@ -115,7 +115,10 @@ fn main() {
             match db::init_db(app.handle()) {
                 Ok(path) => println!("database ready at {:?}", path),
                 Err(e) => {
-                    return Err(format!("database init failed: {}", e));
+                    return Err(Box::new(std::io::Error::other(format!(
+                        "database init failed: {}",
+                        e
+                    ))));
                 }
             }
             if let Err(e) = build_tray(app.handle()) {
