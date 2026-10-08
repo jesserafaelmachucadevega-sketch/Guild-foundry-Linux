@@ -62,15 +62,27 @@ npm run tauri:build        # produces .deb and .AppImage (bundle.targets)
 ## Verify
 
 ```sh
-npm run typecheck          # TypeScript, renderer
-npm run build:frontend     # Vite production bundle
-cargo check                # Rust backend
-cargo test                 # Rust tests
+npm ci                       # install (needs a filesystem with exec bits — see below)
+npm run typecheck            # TypeScript, renderer
+npm run build:frontend       # Vite production bundle
+
+cd src-tauri                 # there is no Cargo.toml at the repo root
+cargo check --all-targets
+cargo test
+cargo clippy --all-targets
 ```
 
-Rust verification (`cargo check` / `cargo build` / `cargo test`) requires the toolchain and
-system dependencies above. Status is tracked in `CHECKLIST.md`; anything not
-verified in a given environment is marked **NOT VERIFIED**.
+Rust **1.80+** is required (`rust-version` in `src-tauri/Cargo.toml` is
+authoritative). CI runs all of the above on every push.
+
+> **Building from a flash drive?** exFAT/NTFS/FAT32 cannot store Unix execute
+> bits, so `npm run typecheck` fails with `sh: tsc: Permission denied` and
+> `chmod` is a silent no-op. Copy the checkout to a real filesystem first — see
+> [`docs/linux-quickstart.md`](docs/linux-quickstart.md) §3a.
+
+Status is tracked in `CHECKLIST.md`: **COMPILE-VERIFIED** items build, lint and
+pass `cargo test`; **NOT VERIFIED** items still need a native run with live
+provider keys or an MCP server.
 
 ## PWA fallback
 

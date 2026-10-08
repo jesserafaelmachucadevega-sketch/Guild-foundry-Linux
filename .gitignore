@@ -12,3 +12,6 @@ __pycache__/
 guild-foundry-ai-data/
 *.db
 *.db-journal
+.env
+.env.*
+!.env.example
