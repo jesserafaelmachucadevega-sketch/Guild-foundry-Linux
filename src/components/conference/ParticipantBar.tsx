@@ -199,13 +199,13 @@ export function ParticipantBar({
                   value={p.modelId}
                   onChange={(e) => {
                     const mid = e.target.value;
-                    const mi = models.find((m) => m.id === mid);
+                    const mi = models.find((m) => m.model_id === mid);
                     onChange(p.slot, { modelId: mid, modelName: mi?.name ?? mid });
                   }}
                 >
                   <option value="">Select model…</option>
                   {models.map((m) => (
-                    <option key={m.id} value={m.id}>
+                    <option key={m.id} value={m.model_id}>
                       {m.name}
                     </option>
                   ))}

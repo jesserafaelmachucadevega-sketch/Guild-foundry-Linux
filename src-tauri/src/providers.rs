@@ -77,7 +77,12 @@ pub struct ProviderSummary {
 
 #[derive(Serialize)]
 pub struct ModelInfo {
+    /// Stable row key, `"<provider_id>:<model_id>"`. Used for favorites,
+    /// hiding and sorting. NOT the name to send to the provider.
     id: String,
+    /// The provider-side model identifier (e.g. `gpt-4o`). This is what must
+    /// be sent as `model_id` on chat/agent calls.
+    model_id: String,
     name: String,
     provider_id: String,
     pricing_verified: String,
@@ -238,7 +243,7 @@ fn ensure_provider_columns(conn: &Connection) -> rusqlite::Result<()> {
         .prepare("PRAGMA table_info(providers)")?
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
-    let mut add = |name: &str, ddl: &str| -> rusqlite::Result<()> {
+    let add = |name: &str, ddl: &str| -> rusqlite::Result<()> {
         if !cols.iter().any(|c| c == name) {
             conn.execute_batch(&format!("ALTER TABLE providers ADD COLUMN {}", ddl))?;
         }
@@ -916,6 +921,7 @@ fn row_to_model_info(
     let flag = |k: &str| caps.get(k).and_then(|v| v.as_bool());
     ModelInfo {
         id,
+        model_id,
         name: display_name,
         provider_id,
         pricing_verified: pricing_class,

@@ -4,7 +4,6 @@
 // secrets.rs). This store holds only non-sensitive configuration.
 
 use std::collections::HashMap;
-use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
 #[tauri::command]

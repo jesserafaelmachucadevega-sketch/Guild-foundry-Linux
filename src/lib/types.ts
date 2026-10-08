@@ -25,13 +25,8 @@ export type ConnectionStatus =
   | { state: 'connected'; latencyMs: number }
   | { state: 'error'; code: number | string; detail: string };
 
-export interface ModelInfo {
-  id: string;
-  name: string;
-  providerId: string;
-  free: boolean;
-  tags: string[];
-}
+// `ModelInfo` is defined once, next to the commands that produce it.
+export type { ModelInfo } from './providers';
 
 export interface ChatMessage {
   id: string;

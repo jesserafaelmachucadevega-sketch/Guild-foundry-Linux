@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '../../lib/api';
-import { getProviders, listModels } from '../../lib/providers';
+import { getProviders, listModels, type ModelInfo } from '../../lib/providers';
 import { runAgentLoop } from '../../lib/agentLoop';
 import TaskGraph from './TaskGraph';
 import ApprovalGate from './ApprovalGate';
@@ -40,7 +40,7 @@ export default function BuilderStudio() {
   const [mode, setMode] = useState<RunMode>('SAFE');
   const [providers, setProviders] = useState<Array<{ id: string; name: string; status: string }>>([]);
   const [providerId, setProviderId] = useState('');
-  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelId, setModelId] = useState('');
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [run, setRun] = useState<RunSummary | null>(null);
@@ -94,8 +94,8 @@ export default function BuilderStudio() {
     if (!providerId) return;
     listModels(providerId)
       .then((ms) => {
-        setModels(ms.map((m) => ({ id: m.id, name: m.name })));
-        if (ms[0]) setModelId(ms[0].id);
+        setModels(ms);
+        if (ms[0]) setModelId(ms[0].model_id);
       })
       .catch(() => setModels([]));
   }, [providerId]);
@@ -247,7 +247,7 @@ export default function BuilderStudio() {
             <div className="gf-label" style={{ marginTop: 8 }}>Model</div>
             <select className="gf-select" value={modelId} onChange={(e) => setModelId(e.target.value)} style={{ width: '100%' }}>
               {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.model_id}>{m.name}</option>
               ))}
             </select>
             <div className="bld-form-row" style={{ marginTop: 12 }}>

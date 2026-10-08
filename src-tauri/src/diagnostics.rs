@@ -101,10 +101,11 @@ fn gpu_summary() -> Option<String> {
 /// a 3s timeout. Resolves DNS too, so a DNS failure also reads as offline.
 /// Never hangs the UI.
 async fn network_reachable() -> bool {
-    match tokio::time::timeout(NETWORK_CHECK_TIMEOUT, tokio::net::TcpStream::connect("example.com:80")).await {
-        Ok(Ok(_)) => true,
-        _ => false,
-    }
+    matches!(
+        tokio::time::timeout(NETWORK_CHECK_TIMEOUT, tokio::net::TcpStream::connect("example.com:80"))
+            .await,
+        Ok(Ok(_))
+    )
 }
 
 /// Machine + app resource snapshot.

@@ -575,8 +575,6 @@ fn unified_diff(old: &str, new: &str, old_label: &str, new_label: &str) -> Strin
         let end = end.min(ops.len());
         let mut old_count = 0usize;
         let mut new_count = 0usize;
-        let mut old_start = 1usize;
-        let mut new_start = 1usize;
         // Compute 1-based line numbers for the hunk header.
         let mut o = 0usize;
         let mut nn = 0usize;
@@ -590,8 +588,8 @@ fn unified_diff(old: &str, new: &str, old_label: &str, new_label: &str) -> Strin
                 Op::Ins => nn += 1,
             }
         }
-        old_start = o + 1;
-        new_start = nn + 1;
+        let old_start = o + 1;
+        let new_start = nn + 1;
         for (op, _) in &ops[start..end] {
             match op {
                 Op::Same => {
@@ -678,7 +676,7 @@ fn apply_patch_text(original: &str, patch: &str) -> Result<String, String> {
     let hunks = parse_unified_patch(patch)?;
     // Apply hunks in reverse order so earlier line numbers stay valid.
     let mut sorted: Vec<PatchHunk> = hunks;
-    sorted.sort_by(|a, b| b.old_start.cmp(&a.old_start));
+    sorted.sort_by_key(|h| std::cmp::Reverse(h.old_start));
     for hunk in sorted {
         let mut idx = hunk.old_start.saturating_sub(1); // 0-based
         let mut replacement: Vec<String> = Vec::new();

@@ -22,7 +22,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 use crate::memory::open_db;
 
@@ -362,9 +362,36 @@ fn canonical_url(u: &str) -> String {
     u.split('?').next().unwrap_or(&u).to_string()
 }
 
+/// Split `text` into sentences.
+///
+/// The `regex` crate has no look-around, so a `(?<=[.!?])\s+` pattern cannot be
+/// used here: `Regex::new` rejects it and `.unwrap()` would panic on every call.
+/// Split manually on a sentence terminator *followed by whitespace*, which
+/// preserves the original behaviour of leaving decimals ("1.2") and
+/// abbreviations intact.
 fn split_sentences(text: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"(?<=[.!?])\s+").unwrap();
-    re.split(text)
+    let chars: Vec<char> = text.chars().collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        cur.push(c);
+        if matches!(c, '.' | '!' | '?') && i + 1 < chars.len() && chars[i + 1].is_whitespace()
+        {
+            // Swallow the delimiter whitespace so it is not carried into the
+            // next sentence.
+            while i + 1 < chars.len() && chars[i + 1].is_whitespace() {
+                i += 1;
+            }
+            out.push(std::mem::take(&mut cur));
+        }
+        i += 1;
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out.into_iter()
         .map(|s| s.trim().to_string())
         .filter(|s| s.len() > 40 && s.len() < 600)
         .collect()
@@ -503,4 +530,57 @@ async fn run_pipeline(
     st.synthesis = synthesis;
     st.comparisons = comparisons;
     Ok(st)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: the sentence splitter used to build a look-behind regex
+    /// (`(?<=[.!?])\s+`). The `regex` crate has no look-around, so `Regex::new`
+    /// returned an error and the `.unwrap()` panicked on every call. These tests
+    /// pin the hand-rolled splitter so that panic cannot come back.
+    #[test]
+    fn split_sentences_does_not_panic_and_splits_on_terminators() {
+        let text = "This is the first sentence and it is long enough to survive the length filter. \
+This is the second sentence, also comfortably longer than forty characters! \
+And a third one right here, padded out so it clears the minimum length bar?";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 3, "got {:?}", out);
+        assert!(out[0].starts_with("This is the first sentence"));
+        assert!(out[0].ends_with("length filter."));
+        assert!(out[1].ends_with("forty characters!"));
+        assert!(out[2].ends_with("minimum length bar?"));
+    }
+
+    #[test]
+    fn split_sentences_keeps_trailing_text_without_terminator() {
+        let out = split_sentences("no terminator here at all, just a long trailing fragment of text");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].ends_with("trailing fragment of text"));
+    }
+
+    #[test]
+    fn split_sentences_preserves_decimal_and_abbreviation_style_dots() {
+        // A '.' that is not followed by whitespace is not a sentence boundary.
+        let text = "Version 1.2 shipped today with a handful of small fixes that were quite pleasant. \
+Afterwards the team celebrated the release with an unusually long and detailed write up of it.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "got {:?}", out);
+        assert!(out[0].contains("1.2"));
+    }
+
+    #[test]
+    fn split_sentences_filters_out_short_fragments() {
+        // Anything under the 40-char floor is dropped.
+        assert!(split_sentences("Too short.").is_empty());
+    }
+
+    #[test]
+    fn canonical_url_lowercases_and_drops_query_and_fragment() {
+        assert_eq!(
+            canonical_url("  HTTPS://Example.COM/Path?a=1#frag  "),
+            "https://example.com/path"
+        );
+    }
 }

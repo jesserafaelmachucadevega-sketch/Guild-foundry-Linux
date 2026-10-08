@@ -27,7 +27,10 @@ export interface ProviderSummary {
 }
 
 export interface ModelInfo {
+  /** Stable row key, `"<provider_id>:<model_id>"`. Favorites/sorting only. */
   id: string;
+  /** Provider-side model id (e.g. `gpt-4o`). Send this as `model_id`. */
+  model_id: string;
   name: string;
   provider_id: string;
   pricing_verified: PricingVerified;

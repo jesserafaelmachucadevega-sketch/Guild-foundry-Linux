@@ -21,7 +21,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
 const SETTINGS_STORE: &str = "settings.json";
@@ -93,7 +92,7 @@ fn is_newer(remote: &str, current: &str) -> Option<bool> {
     let parse = |v: &str| -> Option<Vec<u64>> {
         v.trim()
             .trim_start_matches('v')
-            .split(|c: char| c == '.' || c == '-')
+            .split(['.', '-'])
             .map(|seg| seg.parse::<u64>().ok())
             .collect::<Option<Vec<u64>>>()
     };

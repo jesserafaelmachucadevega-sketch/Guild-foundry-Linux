@@ -35,8 +35,7 @@ fn save_custom(app: &tauri::AppHandle, bytes: &[u8]) -> Result<(), String> {
     }
     let path = avatars_dir(app)?.join(CUSTOM_FILE);
     std::fs::write(&path, bytes).map_err(|e| format!("save failed: {}", e))?;
-    crate::settings::settings_set(app.clone(), CUSTOM_FLAG.to_string(), serde_json::json!("1"))
-        .map_err(|e| e)?;
+    crate::settings::settings_set(app.clone(), CUSTOM_FLAG.to_string(), serde_json::json!("1"))?;
     Ok(())
 }
 
@@ -45,7 +44,7 @@ fn save_custom(app: &tauri::AppHandle, bytes: &[u8]) -> Result<(), String> {
 pub fn avatar_upload_image(app: tauri::AppHandle, data_base64: String) -> Result<(), String> {
     use base64::Engine;
     let raw = data_base64.trim();
-    let b64 = raw.split(',').last().unwrap_or(raw);
+    let b64 = raw.split(',').next_back().unwrap_or(raw);
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(b64)
         .map_err(|e| format!("bad base64 image: {}", e))?;
@@ -75,7 +74,6 @@ pub fn avatar_set_image(app: tauri::AppHandle, source_path: String) -> Result<()
 pub fn avatar_clear_custom(app: tauri::AppHandle) -> Result<(), String> {
     let path = avatars_dir(&app)?.join(CUSTOM_FILE);
     let _ = std::fs::remove_file(&path);
-    crate::settings::settings_set(app.clone(), CUSTOM_FLAG.to_string(), serde_json::json!("0"))
-        .map_err(|e| e)?;
+    crate::settings::settings_set(app.clone(), CUSTOM_FLAG.to_string(), serde_json::json!("0"))?;
     Ok(())
 }

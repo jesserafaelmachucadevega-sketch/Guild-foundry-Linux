@@ -104,7 +104,7 @@ fn gpu_info() -> String {
                     for line in text.lines() {
                         let lower = line.to_lowercase();
                         if lower.contains(" vga ") || lower.contains("3d controller") {
-                            if let Some(desc) = line.splitn(2, ':').nth(1) {
+                            if let Some((_, desc)) = line.split_once(':') {
                                 found.push(desc.trim().to_string());
                             }
                         }

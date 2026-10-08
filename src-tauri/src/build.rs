@@ -319,7 +319,7 @@ async fn run_command(
     cwd: &Path,
     cancel: &Arc<AtomicBool>,
 ) -> Result<(bool, Vec<(String, String)>), String> {
-    let mut child = tokio::process::Command::new(&cmd.program)
+    let child = tokio::process::Command::new(&cmd.program)
         .args(&cmd.args)
         .current_dir(cwd)
         .stdout(std::process::Stdio::piped())
@@ -1165,7 +1165,7 @@ fn detect_test_suites(root: &Path) -> Vec<TestSuite> {
                     kind: "format".into(),
                     cmd: BuildCmd {
                         program: "npx".into(),
-                        args: vec!["--yes".into(), "prettier".into(), "--check".into(), ".".into()],
+                        args: vec!["--yes".into(), tool.into(), "--check".into(), ".".into()],
                         label: "prettier --check .".into(),
                     },
                 });

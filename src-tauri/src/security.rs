@@ -253,10 +253,10 @@ fn trust_of(source: &str) -> &'static str {
 /// Normalizes a source label; unknown labels are coerced to EXTERNAL so
 /// nothing ever enters a prompt unlabeled.
 fn normalize_source(source: &str) -> &'static str {
-    let upper = source.trim().to_uppercase().replace(' ', "_").replace('-', "_");
-    for s in SOURCES {
-        if upper == *s {
-            return *s;
+    let upper = source.trim().to_uppercase().replace([' ', '-'], "_");
+    for &s in SOURCES {
+        if upper == s {
+            return s;
         }
     }
     "EXTERNAL"

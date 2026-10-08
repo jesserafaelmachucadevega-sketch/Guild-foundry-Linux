@@ -355,10 +355,11 @@ pub fn memory_consolidate(app: tauri::AppHandle) -> Result<ConsolidationReport, 
             model_id,
             value.trim().to_lowercase()
         );
-        if seen.contains_key(&fingerprint) {
-            dup_rowids.push(*rowid);
-        } else {
-            seen.insert(fingerprint, *rowid);
+        match seen.entry(fingerprint) {
+            std::collections::hash_map::Entry::Occupied(_) => dup_rowids.push(*rowid),
+            std::collections::hash_map::Entry::Vacant(slot) => {
+                slot.insert(*rowid);
+            }
         }
     }
     for rowid in &dup_rowids {
