@@ -1,0 +1,191 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Phase 10 — memory / knowledge bridge / research panels. Theme vars only. */
+
+.mem-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.mem-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mem-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mem-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--gf-muted);
+}
+
+.mem-span2 {
+  grid-column: span 2;
+}
+
+.mem-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mem-search {
+  display: flex;
+  gap: 8px;
+}
+
+.mem-search .gf-input {
+  flex: 1;
+}
+
+.mem-status {
+  font-size: 12px;
+  color: var(--gf-muted);
+}
+
+.mem-error {
+  font-size: 12px;
+  color: var(--gf-danger);
+  border: 1px solid var(--gf-danger);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.mem-report {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mem-entry {
+  border: 1px solid var(--gf-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--gf-panel-2);
+}
+
+.mem-entry-key {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--gf-gold);
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.mem-entry-key a {
+  color: var(--gf-gold);
+}
+
+.mem-entry-body {
+  font-size: 13px;
+  color: var(--gf-offwhite);
+  white-space: pre-wrap;
+  margin-bottom: 6px;
+}
+
+.mem-entry-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mem-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mem-bucket h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mem-hint {
+  font-size: 11px;
+  color: var(--gf-muted);
+}
+
+.mem-empty {
+  color: var(--gf-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.mem-progress-bar {
+  height: 8px;
+  border: 1px solid var(--gf-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--gf-black);
+}
+
+.mem-progress-fill {
+  height: 100%;
+  background: var(--gf-gold);
+  transition: width 0.3s ease;
+}
+
+.mem-stages {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.mem-research-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mem-synthesis h4,
+.mem-compare h4,
+.mem-sources h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+}
+
+.mem-synthesis pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  border: 1px solid var(--gf-border);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--gf-panel-2);
+  color: var(--gf-offwhite);
+  margin: 0;
+}
+
+.mem-compare ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--gf-muted);
+}
+
+.mem-quote {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--gf-muted);
+  border-left: 2px solid var(--gf-border);
+  padding-left: 8px;
+  margin: 4px 0;
+}

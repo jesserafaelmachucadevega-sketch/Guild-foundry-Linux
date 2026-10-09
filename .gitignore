@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+.DS_Store
+# Rust build artifacts
+src-tauri/target/
+src-tauri/gen/schemas/
+__pycache__/
+# Local secrets / runtime state (never commit)
+guild-foundry-ai-data/
+*.db
+*.db-journal
+.env
+.env.*
+!.env.example

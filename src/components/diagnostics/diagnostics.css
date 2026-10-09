@@ -1,0 +1,140 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Phase 11 — Diagnostics / Updater / Crash recovery panel styles.
+   Theme classes only: palette variables from theme.css, no gradients,
+   no distribution or hardware names in the UI. */
+
+.gf-diag {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.gf-diag-section {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+}
+
+.gf-diag-section > .gf-diag-section-head {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gf-border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gf-tan);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gf-diag-section-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gf-diag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.gf-diag-row .gf-muted {
+  font-size: 12px;
+}
+
+/* Resource bars: labelled, keyboard-focusable region with aria values on the
+   React side. */
+.gf-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--gf-dark-grey);
+  border: 1px solid var(--gf-border);
+  position: relative;
+  min-width: 80px;
+}
+
+.gf-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--gf-gold);
+}
+
+.gf-bar-fill.hot { background: var(--gf-danger); }
+.gf-bar-fill.warm { background: var(--gf-tan); }
+
+.gf-diag-value {
+  font-family: var(--gf-mono);
+  font-size: 12.5px;
+  min-width: 120px;
+  text-align: right;
+  color: var(--gf-offwhite);
+}
+
+/* Provider status list */
+.gf-provider-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gf-provider-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  border: 1px solid var(--gf-border);
+  padding: 6px 10px;
+  background: var(--gf-panel-2);
+}
+
+/* Release notes block */
+.gf-release-notes {
+  background: var(--gf-black);
+  border: 1px solid var(--gf-border);
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* Crash recovery JSON inspector */
+.gf-json-inspect {
+  background: var(--gf-black);
+  border: 1px solid var(--gf-border);
+  padding: 10px;
+  font-family: var(--gf-mono);
+  font-size: 12px;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.gf-offline-note {
+  border: 1px solid var(--gf-danger);
+  color: var(--gf-danger);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.gf-info-note {
+  border: 1px solid var(--gf-border-strong);
+  color: var(--gf-muted);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}

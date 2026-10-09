@@ -1,0 +1,152 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Phase 9 — Security components. Built on the workstation theme (theme.css);
+   no gradients, no distro/hardware references anywhere in UI strings. */
+
+.sec-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sec-count {
+  font-size: 12px;
+}
+
+.sec-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gf-border);
+}
+
+.sec-filters .gf-input {
+  width: 180px;
+}
+
+.sec-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--gf-offwhite);
+  cursor: pointer;
+}
+
+.sec-check input[type='checkbox'] {
+  accent-color: var(--gf-gold);
+}
+
+.sec-error {
+  color: var(--gf-danger);
+  border: 1px solid var(--gf-danger);
+  padding: 8px 12px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.sec-table-wrap {
+  flex: 1;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.sec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.sec-table th,
+.sec-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--gf-border);
+  vertical-align: top;
+}
+
+.sec-table th {
+  position: sticky;
+  top: 0;
+  background: var(--gf-panel-2);
+  color: var(--gf-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.sec-ts {
+  font-family: var(--gf-mono);
+  white-space: nowrap;
+  color: var(--gf-muted);
+}
+
+.sec-cat {
+  font-family: var(--gf-mono);
+  white-space: nowrap;
+}
+
+.sec-msg {
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sec-empty {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.sec-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--gf-border-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.sec-badge.level-debug { color: var(--gf-muted); }
+.sec-badge.level-info { color: var(--gf-offwhite); }
+.sec-badge.level-warn { color: var(--gf-tan); border-color: var(--gf-tan-dim); }
+.sec-badge.level-error { color: var(--gf-danger); border-color: var(--gf-danger); }
+.sec-badge.level-security { color: var(--gf-gold-bright); border-color: var(--gf-gold); }
+
+.sec-note {
+  font-size: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--gf-border);
+}
+
+/* ---------- Constitution ---------- */
+
+.sec-const {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.sec-const-section {
+  margin-bottom: 20px;
+}
+
+.sec-const-title {
+  font-size: 15px;
+  color: var(--gf-gold);
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.sec-const-body {
+  font-family: var(--gf-font);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin: 0;
+  color: var(--gf-offwhite);
+}

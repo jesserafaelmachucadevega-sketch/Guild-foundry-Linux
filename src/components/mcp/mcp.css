@@ -1,0 +1,211 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Phase 7 — MCP gateway + Permission Center styles. Theme vars only (theme.css). */
+
+.mcp-panel {
+  padding: 16px 20px;
+  max-width: 980px;
+  color: var(--gf-offwhite);
+}
+
+.mcp-title {
+  font-size: 20px;
+  margin: 0;
+  color: var(--gf-tan);
+}
+
+.mcp-subtitle {
+  font-size: 15px;
+  margin: 18px 0 8px;
+  color: var(--gf-tan);
+}
+
+.mcp-muted { color: var(--gf-muted); }
+.mcp-small { font-size: 12px; }
+.mcp-mono { font-family: var(--gf-mono); }
+
+.mcp-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.mcp-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--gf-border);
+}
+
+.mcp-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--gf-muted);
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.mcp-tab.active {
+  color: var(--gf-gold);
+  border-bottom-color: var(--gf-gold);
+}
+
+.mcp-server-card {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+
+.mcp-server-head { margin-bottom: 8px; }
+
+.mcp-server-name {
+  font-weight: 600;
+  color: var(--gf-offwhite);
+  font-size: 15px;
+}
+
+.mcp-badge {
+  display: inline-block;
+  border: 1px solid var(--gf-border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--gf-muted);
+  margin: 1px 2px;
+}
+
+.mcp-badge.mcp-ok { color: var(--gf-ok); border-color: var(--gf-ok); }
+.mcp-badge.mcp-warn { color: var(--gf-gold); border-color: var(--gf-gold); }
+.mcp-badge.mcp-risk-high { color: var(--gf-danger); border-color: var(--gf-danger); }
+.mcp-badge.mcp-risk-mid { color: var(--gf-gold); border-color: var(--gf-gold); }
+.mcp-badge.mcp-risk-low { color: var(--gf-ok); border-color: var(--gf-ok); }
+
+.mcp-ok-text { color: var(--gf-ok); }
+.mcp-err-text { color: var(--gf-danger); }
+
+.mcp-test { font-size: 13px; margin: 6px 0; }
+
+.mcp-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mcp-tools {
+  margin-top: 10px;
+  border-top: 1px solid var(--gf-border);
+  padding-top: 8px;
+}
+
+.mcp-tool {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel-2);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.mcp-tool-head { margin-bottom: 4px; }
+
+.mcp-call-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.mcp-call-row .gf-input { flex: 1; }
+
+.mcp-pre {
+  background: var(--gf-black);
+  border: 1px solid var(--gf-border);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: var(--gf-mono);
+  font-size: 12px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mcp-result { margin-top: 6px; }
+
+.mcp-field {
+  display: block;
+  margin: 10px 0;
+}
+
+.mcp-field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--gf-muted);
+  margin-bottom: 4px;
+}
+
+.mcp-field .gf-input,
+.mcp-field .gf-select { width: 100%; }
+
+.mcp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.mcp-modal {
+  background: var(--gf-panel);
+  border: 1px solid var(--gf-border-strong);
+  border-radius: 8px;
+  padding: 18px 20px;
+  width: min(560px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.mcp-modal .gf-textarea { width: 100%; }
+
+.mcp-matrix,
+.mcp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.mcp-matrix th,
+.mcp-matrix td,
+.mcp-table th,
+.mcp-table td {
+  border: 1px solid var(--gf-border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.mcp-matrix thead th,
+.mcp-table thead th {
+  background: var(--gf-panel-2);
+  color: var(--gf-tan);
+  font-weight: 600;
+}
+
+.mcp-radio-cell { text-align: center; }
+
+.mcp-radio-cell input,
+.mcp-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gf-gold);
+  cursor: pointer;
+}
+
+.mcp-domain-label { font-weight: 600; color: var(--gf-offwhite); }

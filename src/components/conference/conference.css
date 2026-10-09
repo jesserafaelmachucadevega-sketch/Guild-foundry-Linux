@@ -1,0 +1,207 @@
+/* Conference Room styles — Phase 3.
+   Uses only theme.css tokens (gf-*). No gradients. */
+
+.gf-conf {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--gf-black);
+}
+
+/* ---------- Debate controls ---------- */
+.gf-debate-controls {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+}
+
+.gf-round-chip {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--gf-border);
+  color: var(--gf-muted);
+  padding: 2px 8px;
+}
+.gf-round-chip.active {
+  border-color: var(--gf-gold);
+  color: var(--gf-gold);
+}
+.gf-round-chip.done {
+  border-color: var(--gf-border-strong);
+  color: var(--gf-tan);
+}
+
+/* ---------- Participant bar ---------- */
+.gf-participant-bar {
+  border-bottom: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+}
+.gf-participant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+.gf-participant {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel-2);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gf-participant .gf-select,
+.gf-participant .gf-textarea {
+  width: 100%;
+}
+
+/* ---------- Model grid panes ---------- */
+.gf-conf-grid {
+  min-height: 0;
+}
+.gf-conf .gf-pane {
+  background: var(--gf-black);
+  overflow: hidden;
+}
+/* 2x2 layout: divider between the two rows */
+.gf-conf-grid.cols-4 > .gf-pane:nth-child(-n + 2) {
+  border-bottom: 1px solid var(--gf-border-strong);
+}
+
+.gf-pane-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.gf-status-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: var(--gf-muted);
+  display: inline-block;
+}
+.gf-status-dot.idle { background: var(--gf-muted); }
+.gf-status-dot.streaming {
+  background: var(--gf-gold);
+  animation: gf-blink 1s steps(2) infinite;
+}
+.gf-status-dot.waiting { background: var(--gf-tan); }
+.gf-status-dot.error { background: var(--gf-danger); }
+
+@keyframes gf-blink {
+  50% { opacity: 0.25; }
+}
+
+.gf-role-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--gf-border-strong);
+  color: var(--gf-tan);
+  padding: 2px 6px;
+}
+.gf-role-badge.gf-winner-badge {
+  border-color: var(--gf-gold);
+  color: var(--gf-gold);
+}
+
+.gf-pane-msgs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gf-pane-input {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+}
+
+.gf-bubble.gf-streaming {
+  border-color: var(--gf-gold);
+}
+.gf-cursor {
+  color: var(--gf-gold);
+  animation: gf-blink 1s steps(2) infinite;
+}
+
+/* ---------- Bottom strip: voting + synthesis ---------- */
+.gf-conf-bottom {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.gf-vote-panel {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-right: 1px solid var(--gf-border);
+}
+.gf-synth-panel {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+}
+.gf-synth-result {
+  background: var(--gf-black);
+  border: 1px solid var(--gf-border);
+  padding: 8px;
+  font-size: 12px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin: 8px 0 0;
+}
+
+.gf-meter {
+  height: 8px;
+  background: var(--gf-dark-grey);
+  border: 1px solid var(--gf-border);
+  min-width: 60px;
+}
+.gf-meter > div {
+  height: 100%;
+  background: var(--gf-gold);
+}
+
+/* ---------- SDUI widgets ---------- */
+.gf-sdui {
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel-2);
+  padding: 8px;
+  margin-top: 8px;
+}
+.gf-sdui-approval {
+  border-color: var(--gf-gold);
+}
+.gf-sdui-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.gf-sdui-table th,
+.gf-sdui-table td {
+  border: 1px solid var(--gf-border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.gf-sdui-table th {
+  background: var(--gf-dark-grey);
+  color: var(--gf-tan);
+  font-weight: 600;
+}
