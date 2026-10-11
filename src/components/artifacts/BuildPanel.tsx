@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke, isDesktop } from '../../lib/api';
+import { audit } from '../../lib/audit';
 
 interface BuildStatus {
   state: string;
@@ -139,6 +140,7 @@ export function BuildPanel({ onToast }: { onToast: (t: string) => void }): React
       setStatus(null);
       setPackaged(false);
       setReleased(false);
+      audit('INFO', 'build', `build started for ${projectRoot.trim()}`, { target });
       onToast(`Build started: ${id.slice(0, 8)}`);
     } catch (e) {
       onToast(`Build start failed: ${fmtErr(e)}`);

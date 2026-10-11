@@ -5,11 +5,12 @@
 import React, { useState } from 'react';
 import { AuditPanel } from './AuditPanel';
 import { Constitution } from './Constitution';
+import { ClassifierPanel } from './ClassifierPanel';
 import './security.css';
 
-type Tab = 'audit' | 'constitution';
+type Tab = 'audit' | 'constitution' | 'classifier';
 
-export function SecurityView(): React.ReactElement {
+export function SecurityView({ onToast }: { onToast?: (t: string) => void }): React.ReactElement {
   const [tab, setTab] = useState<Tab>('audit');
   return (
     <div className="gf-workspace" style={{ flexDirection: 'column' }}>
@@ -28,8 +29,15 @@ export function SecurityView(): React.ReactElement {
         >
           Constitution
         </button>
+        <button
+          type="button"
+          className={`gf-btn${tab === 'classifier' ? ' primary' : ''}`}
+          onClick={() => setTab('classifier')}
+        >
+          Classifier
+        </button>
       </div>
-      {tab === 'audit' ? <AuditPanel /> : <Constitution />}
+      {tab === 'audit' ? <AuditPanel /> : tab === 'constitution' ? <Constitution /> : <ClassifierPanel onToast={onToast ?? (() => undefined)} />}
     </div>
   );
 }

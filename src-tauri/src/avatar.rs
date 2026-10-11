@@ -52,12 +52,21 @@ pub fn avatar_upload_image(app: tauri::AppHandle, data_base64: String) -> Result
 }
 
 /// Let the agent set the avatar from a generated/saved image file.
-/// Used after `media.generate_image` redesigns the avatar.
+/// Used after `media.generate_image` redesigns the avatar. Sandboxed: the
+/// source must live under app-data or the OS temp dir so a model cannot
+/// point this at e.g. /etc/passwd (which would then fail the image check
+/// anyway, but defense in depth costs nothing here).
 pub fn set_avatar_from_path(
     app: &tauri::AppHandle,
     source_path: &str,
 ) -> Result<serde_json::Value, String> {
-    let bytes = std::fs::read(source_path).map_err(|e| format!("read failed: {}", e))?;
+    let canon = std::fs::canonicalize(source_path).map_err(|e| format!("read failed: {}", e))?;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let tmp = std::env::temp_dir();
+    if !canon.starts_with(&app_data) && !canon.starts_with(&tmp) {
+        return Err("image_path must be under app-data or the temp dir".to_string());
+    }
+    let bytes = std::fs::read(&canon).map_err(|e| format!("read failed: {}", e))?;
     save_custom(app, &bytes)?;
     Ok(serde_json::json!({ "ok": true, "avatar": "custom" }))
 }

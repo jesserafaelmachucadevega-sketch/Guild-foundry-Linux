@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '../../lib/api';
 import { listen } from '@tauri-apps/api/event';
+import { audit } from '../../lib/audit';
 import type { ApprovalEvent } from './types';
 
 export default function ApprovalGate() {
@@ -36,6 +37,10 @@ export default function ApprovalGate() {
         approval_id: current.approval_id,
         decision,
         reason,
+      });
+      audit(decision === 'approved' ? 'INFO' : 'WARN', 'approvals', `approval ${decision}: ${current.kind}`, {
+        approval_id: current.approval_id,
+        kind: current.kind,
       });
       setPending((p) => p.slice(1));
       setReason('');

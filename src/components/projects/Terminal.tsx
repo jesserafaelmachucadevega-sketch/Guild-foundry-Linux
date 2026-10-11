@@ -5,6 +5,7 @@
 // (SAFE / MODERATE / HIGH_RISK / CRITICAL).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke, DesktopCapabilityRequired } from '../../lib/api';
+import { audit } from '../../lib/audit';
 
 type Safety = 'SAFE' | 'MODERATE' | 'HIGH_RISK' | 'CRITICAL';
 
@@ -136,6 +137,7 @@ export function Terminal({
   const runExec = async (cmd: string, args: string[]) => {
     setRunning(true);
     push('cmd', `$ ${[cmd, ...args].join(' ')}`);
+    audit('INFO', 'shell', `exec ${cmd}`, { cmd, args });
     try {
       const out = await invoke<ExecOut>('term_exec', {
         project_root: projectRoot,
@@ -183,6 +185,21 @@ export function Terminal({
     let safety: Safety = 'SAFE';
     try {
       safety = await invoke<Safety>('term_classify', { cmd, args });
+      // Second opinion from the Phase 9 security classifier: escalate but
+      // never downgrade — the sandbox classification stays authoritative.
+      try {
+        const sec = await invoke<string>('sec_classify_command', { cmd: [cmd, ...args].join(' ') });
+        const up = sec.toUpperCase();
+        const rank = (s: string): number =>
+          s === 'CRITICAL' ? 3 : s === 'HIGH_RISK' || s === 'HIGH' ? 2 : s === 'MODERATE' || s === 'MEDIUM' ? 1 : 0;
+        if (rank(up) > rank(safety)) {
+          const mapped: Safety = up.includes('CRIT') ? 'CRITICAL' : up.includes('HIGH') ? 'HIGH_RISK' : 'MODERATE';
+          push('info', `security classifier escalates ${safety} → ${mapped}`);
+          safety = mapped;
+        }
+      } catch {
+        /* classifier unavailable — keep term_classify verdict */
+      }
     } catch (err) {
       push('err', errMsg(err));
       return;
@@ -215,6 +232,16 @@ export function Terminal({
       await invoke('term_kill', { id });
       push('info', `[killed ${id.slice(0, 8)}]`);
       void refreshProcs();
+    } catch (err) {
+      onToast(errMsg(err));
+    }
+  };
+
+  const fetchOutput = async (id: string) => {
+    try {
+      const out = await invoke<string>('term_output', { id, tail: 200 });
+      push('info', `[${id.slice(0, 8)}] last output:`);
+      push('out', out || '(no output buffered)');
     } catch (err) {
       onToast(errMsg(err));
     }
@@ -289,6 +316,9 @@ export function Terminal({
             <span className="gf-muted" style={{ fontSize: 11 }}>
               pid {p.pid}
             </span>
+            <button className="gf-btn" style={{ padding: '0 8px' }} onClick={() => void fetchOutput(p.id)} title="Fetch buffered output">
+              Output
+            </button>
             {p.running && (
               <button className="gf-btn danger" style={{ padding: '0 8px' }} onClick={() => void killProc(p.id)}>
                 Kill

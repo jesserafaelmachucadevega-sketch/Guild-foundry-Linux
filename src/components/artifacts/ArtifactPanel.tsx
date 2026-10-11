@@ -42,6 +42,7 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
   const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
   const [filterBuild, setFilterBuild] = useState('');
   const [verify, setVerify] = useState<Record<string, VerifyResult>>({});
+  const [inspected, setInspected] = useState<Record<string, unknown>>({});
   const [kind, setKind] = useState('package');
   const [filePath, setFilePath] = useState('');
   const [relBuild, setRelBuild] = useState('');
@@ -83,6 +84,18 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
         onToast(`Exported zip: ${r.path}`);
       } catch (e) {
         onToast(`Export failed: ${fmtErr(e)}`);
+      }
+    },
+    [onToast],
+  );
+
+  const inspectOne = useCallback(
+    async (id: string) => {
+      try {
+        const r = await invoke<unknown>('artifact_get', { artifact_id: id });
+        setInspected((prev) => ({ ...prev, [id]: r }));
+      } catch (e) {
+        onToast(`Inspect failed: ${fmtErr(e)}`);
       }
     },
     [onToast],
@@ -150,8 +163,9 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
       )}
       {artifacts.map((a) => {
         const v = verify[a.id];
+        const detail = inspected[a.id];
         return (
-          <div className="gf-artifact-row" key={a.id}>
+          <div className="gf-artifact-row" key={a.id} style={{ flexWrap: 'wrap' }}>
             <span className="gf-badge">{a.kind}</span>
             <span className="gf-hash" title={a.sha256 ?? ''}>
               sha256: {shortHash(a.sha256)}
@@ -163,12 +177,20 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
               </span>
             )}
             <span style={{ flex: 1 }} />
+            <button className="gf-btn" onClick={() => void inspectOne(a.id)}>
+              Inspect
+            </button>
             <button className="gf-btn" onClick={() => void verifyOne(a.id)}>
               Verify
             </button>
             <button className="gf-btn" onClick={() => void exportOne(a.id)}>
               Export zip
             </button>
+            {detail !== undefined && (
+              <pre style={{ width: '100%', fontSize: 11, whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(detail, null, 2).slice(0, 3000)}
+              </pre>
+            )}
           </div>
         );
       })}

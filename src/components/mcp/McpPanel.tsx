@@ -70,6 +70,9 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [tools, setTools] = useState<Record<string, McpToolInfo[]>>({});
+  const [resources, setResources] = useState<Record<string, unknown[]>>({});
+  const [prompts, setPrompts] = useState<Record<string, unknown[]>>({});
+  const [connecting, setConnecting] = useState<Record<string, boolean>>({});
   const [callArgs, setCallArgs] = useState<Record<string, string>>({});
   const [calling, setCalling] = useState<Record<string, boolean>>({});
   const [callResults, setCallResults] = useState<Record<string, McpCallResult>>({});
@@ -198,6 +201,32 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
       } catch (e) {
         onToast(errText(e));
       }
+      // Best-effort: resources + prompts share the expanded view.
+      try {
+        const rs = await invoke<unknown[]>('mcp_list_resources', { server_id: v.id });
+        setResources((r) => ({ ...r, [v.id]: rs ?? [] }));
+      } catch {
+        /* servers without resources just show tools */
+      }
+      try {
+        const ps = await invoke<unknown[]>('mcp_list_prompts', { server_id: v.id });
+        setPrompts((p) => ({ ...p, [v.id]: ps ?? [] }));
+      } catch {
+        /* servers without prompts just show tools */
+      }
+    }
+  };
+
+  const connectServer = async (v: McpServerView): Promise<void> => {
+    setConnecting((c) => ({ ...c, [v.id]: true }));
+    try {
+      await invoke('mcp_connect', { server_id: v.id });
+      onToast(`Connected to ${v.name}`);
+      await refresh();
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setConnecting((c) => ({ ...c, [v.id]: false }));
     }
   };
 
@@ -347,6 +376,15 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
                   <button
                     type="button"
                     className="gf-btn"
+                    disabled={connecting[v.id] === true}
+                    onClick={() => void connectServer(v)}
+                    title="Establish the MCP session now"
+                  >
+                    {connecting[v.id] ? 'Connecting…' : 'Connect'}
+                  </button>
+                  <button
+                    type="button"
+                    className="gf-btn"
                     disabled={testing[v.id] === true}
                     onClick={() => void testServer(v.id)}
                   >
@@ -377,6 +415,18 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
                   <div className="mcp-tools">
                     {(tools[v.id] ?? []).length === 0 && (
                       <p className="mcp-muted mcp-small">No tools discovered.</p>
+                    )}
+                    {(resources[v.id] ?? []).length > 0 && (
+                      <details className="mcp-small" open>
+                        <summary>Resources ({(resources[v.id] ?? []).length})</summary>
+                        <pre className="mcp-pre">{JSON.stringify(resources[v.id], null, 2).slice(0, 4000)}</pre>
+                      </details>
+                    )}
+                    {(prompts[v.id] ?? []).length > 0 && (
+                      <details className="mcp-small">
+                        <summary>Prompts ({(prompts[v.id] ?? []).length})</summary>
+                        <pre className="mcp-pre">{JSON.stringify(prompts[v.id], null, 2).slice(0, 4000)}</pre>
+                      </details>
                     )}
                     {(tools[v.id] ?? []).map((t) => {
                       const key = `${v.id}:${t.name}`;

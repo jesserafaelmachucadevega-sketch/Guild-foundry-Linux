@@ -25,6 +25,22 @@ fn canonical_root_checked(root: &Path) -> Result<PathBuf, String> {
     std::fs::canonicalize(root).map_err(|e| format!("project root is not accessible: {}", e))
 }
 
+/// Validate a git remote/branch name: non-empty, no flag injection, no path
+/// traversal, and a conservative charset (letters, digits, / _ - .).
+fn validate_git_ref(v: &str) -> Result<(), String> {
+    let t = v.trim();
+    if t.is_empty() {
+        return Err("remote and branch are required".to_string());
+    }
+    if t.starts_with('-') || t.contains("..") || t.contains(' ') {
+        return Err(format!("invalid git ref {:?}", t));
+    }
+    if !t.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.')) {
+        return Err(format!("invalid git ref {:?}", t));
+    }
+    Ok(())
+}
+
 async fn ensure_git() -> Result<(), String> {
     let out = Command::new("git")
         .arg("--version")
@@ -315,9 +331,8 @@ pub async fn git_pull(
     remote: String,
     branch: String,
 ) -> Result<String, String> {
-    if remote.trim().is_empty() || branch.trim().is_empty() {
-        return Err("remote and branch are required".to_string());
-    }
+    validate_git_ref(&remote)?;
+    validate_git_ref(&branch)?;
     let out = run_git(
         Path::new(&project_root),
         &["pull", remote.trim(), branch.trim()],
@@ -341,9 +356,8 @@ pub async fn git_push(
             "push requires explicit confirmation (pre-push modal was not confirmed)".to_string(),
         );
     }
-    if remote.trim().is_empty() || branch.trim().is_empty() {
-        return Err("remote and branch are required".to_string());
-    }
+    validate_git_ref(&remote)?;
+    validate_git_ref(&branch)?;
     let out = run_git(
         Path::new(&project_root),
         &["push", remote.trim(), branch.trim()],

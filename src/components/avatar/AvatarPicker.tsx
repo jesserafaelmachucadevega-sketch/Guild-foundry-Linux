@@ -22,6 +22,7 @@ const circle: React.CSSProperties = {
 export function AvatarPicker({ onToast }: { onToast: (t: string) => void }): React.ReactElement {
   const [gender, setGender] = useState<AvatarGender>('girl');
   const [custom, setCustom] = useState(false);
+  const [pathInput, setPathInput] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -81,6 +82,21 @@ export function AvatarPicker({ onToast }: { onToast: (t: string) => void }): Rea
     }
   };
 
+  const setFromPath = async () => {
+    if (!pathInput.trim()) {
+      onToast('Enter an image path first');
+      return;
+    }
+    try {
+      await invoke('avatar_set_image', { source_path: pathInput.trim() });
+      setCustom(true);
+      emitAvatarChange();
+      onToast('Custom avatar set from path');
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
     <div>
       <span className="gf-muted conn-small">Agent avatar</span>
@@ -124,6 +140,17 @@ export function AvatarPicker({ onToast }: { onToast: (t: string) => void }): Rea
             Use default
           </button>
         )}
+      </div>
+      <div className="gf-row" style={{ gap: 8, marginTop: 8 }}>
+        <input
+          className="gf-input gf-grow"
+          placeholder="/path/to/image.png"
+          value={pathInput}
+          onChange={(e) => setPathInput(e.target.value)}
+        />
+        <button className="gf-icon-btn" onClick={() => void setFromPath()}>
+          Set from path
+        </button>
       </div>
       <p className="conn-note" style={{ marginTop: 8 }}>
         Don't like these? Upload your own picture — or ask the agent to

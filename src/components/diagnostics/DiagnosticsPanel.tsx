@@ -94,6 +94,8 @@ export function DiagnosticsPanel({ onToast }: Props): React.ReactElement {
   const [tokens, setTokens] = useState<TokenStats | null>(null);
   const [providers, setProviders] = useState<ProviderSummary[] | null>(null);
   const [buildWorkers, setBuildWorkers] = useState<BuildWorkerState | null>(null);
+  const [quotaProvider, setQuotaProvider] = useState('');
+  const [quota, setQuota] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
   const [desktop] = useState(() => isDesktop());
 
@@ -277,6 +279,42 @@ export function DiagnosticsPanel({ onToast }: Props): React.ReactElement {
             <p className="gf-info-note">{buildWorkers.note}</p>
           ) : (
             <p className="gf-muted">Not loaded.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="gf-diag-section" aria-label="Rate limit quota">
+        <div className="gf-diag-section-head">
+          <span>Rate limit quota</span>
+        </div>
+        <div className="gf-diag-section-body">
+          <div className="gf-row" style={{ gap: 6 }}>
+            <select
+              className="gf-input"
+              value={quotaProvider}
+              onChange={(e) => setQuotaProvider(e.target.value)}
+            >
+              <option value="">Select provider…</option>
+              {(providers ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <button
+              className="gf-btn"
+              disabled={!quotaProvider}
+              onClick={() => {
+                void invoke<[number, number]>('ratelimit_status', { provider_id: quotaProvider })
+                  .then(setQuota)
+                  .catch((e) => onToast?.(errLabel(e)));
+              }}
+            >
+              Check
+            </button>
+          </div>
+          {quota && (
+            <p className="gf-muted" style={{ marginTop: 6 }}>
+              Used today: {quota[0]} / {quota[1]} requests
+            </p>
           )}
         </div>
       </section>

@@ -2,6 +2,8 @@
 // Guild Foundry AI — Phase 4: project file explorer (sandboxed tree).
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke, DesktopCapabilityRequired } from '../../lib/api';
+import { FileOpsPanel } from './FileOpsPanel';
+import { IndexPanel } from './IndexPanel';
 
 export interface FsEntry {
   name: string;
@@ -269,6 +271,8 @@ export function ProjectExplorer({
           }}
         />
       </div>
+      <FileOpsPanel projectRoot={projectRoot} selected={selected} onToast={onToast} onRefresh={() => setRefreshKey((k) => k + 1)} />
+      <IndexPanel projectRoot={projectRoot} onToast={onToast} />
     </div>
   );
 }

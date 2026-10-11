@@ -6,6 +6,7 @@
 // confirmed=true.
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke, DesktopCapabilityRequired } from '../../lib/api';
+import { audit } from '../../lib/audit';
 
 interface GitFileStatus {
   path: string;
@@ -193,6 +194,7 @@ export function GitPanel({
         branch: pushBranch,
         confirmed: true,
       });
+      audit('INFO', 'git', `pushed ${pushBranch} to ${pushRemote}`, { branch: pushBranch, remote: pushRemote });
       onToast('Pushed');
       setPullOut(out);
       setPushOpen(false);
@@ -208,6 +210,19 @@ export function GitPanel({
     try {
       await invoke('git_checkout', { project_root: projectRoot, target: name });
       onToast(`Checked out ${name}`);
+      void refresh();
+    } catch (err) {
+      onToast(errMsg(err));
+    }
+  };
+
+  const mergeBranch = async () => {
+    const name = window.prompt('Merge branch into current:');
+    if (!name || !name.trim()) return;
+    if (!window.confirm(`Merge "${name.trim()}" into the current branch?`)) return;
+    try {
+      const out = await invoke<string>('git_merge', { project_root: projectRoot, branch: name.trim() });
+      onToast(out || 'Merged');
       void refresh();
     } catch (err) {
       onToast(errMsg(err));
@@ -236,6 +251,9 @@ export function GitPanel({
               {b.current ? '● ' : ''}{b.name}
             </button>
           ))}
+          <button className="gf-btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => void mergeBranch()} title="Merge a branch into current">
+            Merge…
+          </button>
           {branches.length === 0 && <span className="gf-muted" style={{ fontSize: 12 }}>No branches (is this a git repo?)</span>}
         </div>
 

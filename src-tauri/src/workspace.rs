@@ -746,6 +746,18 @@ pub struct FsEntry {
 fn effective_root(app: &tauri::AppHandle, root: &str) -> Result<PathBuf, String> {
     if !root.trim().is_empty() {
         let p = PathBuf::from(root.trim());
+        // Block system-level roots even before creation: /, /root, /etc,
+        // /usr, /bin, /sbin, /proc, /sys, /dev, and SSH/GPG key dirs.
+        let low = root.trim().to_lowercase();
+        let blocked = [
+            "/", "/root", "/etc", "/usr", "/bin", "/sbin", "/proc", "/sys", "/dev",
+        ];
+        if blocked.iter().any(|b| low == *b || low.starts_with(&format!("{}/", b))) {
+            return Err("refused: system directory cannot be a project root".to_string());
+        }
+        if low.ends_with("/.ssh") || low.ends_with("/.gnupg") || low.contains("/.ssh/") || low.contains("/.gnupg/") {
+            return Err("refused: credential directories cannot be a project root".to_string());
+        }
         if p.is_dir() {
             return Ok(p);
         }
@@ -882,21 +894,24 @@ pub fn ws_rename(
 ) -> Result<(), String> {
     let root = effective_root(&app, &project_root)?;
     let src = resolve_sandboxed(&root, &rel)?;
-    if new_name.contains('/') || new_name.contains('\\') || new_name.is_empty() {
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() || trimmed.contains('/') || trimmed.contains('\\') || trimmed == "." || trimmed == ".." {
         return Err("new name must be a plain file name".to_string());
     }
     let parent = src.parent().ok_or("cannot determine parent")?.to_path_buf();
-    let dst = parent.join(&new_name);
-    // Verify the destination is still inside the sandbox.
+    // Canonicalize the existing parent (it exists) and ensure it is inside
+    // the sandbox; joining a plain file name then cannot escape.
     let canonical = canonical_root(&root)?;
-    if !dst.starts_with(&canonical) {
+    let parent_canon = std::fs::canonicalize(&parent).map_err(|e| format!("cannot resolve parent: {}", e))?;
+    if !parent_canon.starts_with(&canonical) {
         return Err("destination escapes the project root".to_string());
     }
+    let dst = parent_canon.join(trimmed);
     if dst.exists() {
         return Err("a file with the new name already exists".to_string());
     }
     fs::rename(&src, &dst).map_err(|e| format!("cannot rename: {}", e))?;
-    audit(&root, "rename", &rel, &format!("-> {}", new_name));
+    audit(&root, "rename", &rel, &format!("-> {}", trimmed));
     Ok(())
 }
 

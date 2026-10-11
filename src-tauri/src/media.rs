@@ -58,6 +58,55 @@ fn tts_endpoint_for(language: &str, voice: Option<&str>) -> (&'static str, &'sta
     }
 }
 
+/// Strict Fal model id validation: `owner/name[/...]`, ASCII alphanumerics
+/// plus `-_. /`, no traversal, no whitespace, no query/fragment.
+fn validate_model_id(model: &str) -> Result<String, String> {
+    let m = model.trim();
+    if m.is_empty() || m.len() > 120 {
+        return Err("invalid model id".to_string());
+    }
+    if m.contains("..") || m.chars().any(|c| c.is_whitespace()) {
+        return Err("invalid model id".to_string());
+    }
+    if !m.contains('/') {
+        return Err("invalid model id".to_string());
+    }
+    if !m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/')) {
+        return Err("invalid model id".to_string());
+    }
+    if m.starts_with('-') || m.starts_with('/') || m.ends_with('/') || m.contains("//") {
+        return Err("invalid model id".to_string());
+    }
+    Ok(m.to_string())
+}
+
+/// Audio paths for model-driven transcription must be real audio files and
+/// must not point at credential/system locations. The mic flow writes under
+/// app-data media/ or temp; anything under ~/.ssh, ~/.gnupg, ~/.config,
+/// /etc, or without an audio extension is refused.
+fn validate_audio_path(p: &str) -> Result<std::path::PathBuf, String> {
+    let canon = std::fs::canonicalize(p).map_err(|_| format!("audio file not found: {}", p))?;
+    if !canon.is_file() {
+        return Err(format!("audio file not found: {}", p));
+    }
+    let low = canon.to_string_lossy().to_lowercase();
+    if low.contains("/.ssh/") || low.ends_with("/.ssh")
+        || low.contains("/.gnupg/") || low.ends_with("/.gnupg")
+        || low.starts_with("/etc/") || low == "/etc"
+        || low.contains("/.config/")
+    {
+        return Err("audio_path must not point at credentials or system config".to_string());
+    }
+    let ok_ext = matches!(
+        canon.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()).as_deref(),
+        Some("mp3") | Some("wav") | Some("m4a") | Some("ogg") | Some("webm") | Some("flac") | Some("mp4")
+    );
+    if !ok_ext {
+        return Err("audio_path must be an audio file (mp3/wav/m4a/ogg/webm/flac)".to_string());
+    }
+    Ok(canon)
+}
+
 /// Upload a local file to Fal storage; returns the public file URL.
 /// Two-step flow: initiate → PUT bytes to the upload URL.
 async fn fal_upload(
@@ -132,10 +181,8 @@ pub fn transcribe(
         let url = match (audio_url, audio_path) {
             (Some(u), _) if !u.trim().is_empty() => u.trim().to_string(),
             (_, Some(p)) => {
-                let path = std::path::Path::new(p);
-                if !path.is_file() {
-                    return Err(format!("audio file not found: {}", p));
-                }
+                let canon = validate_audio_path(p)?;
+                let path = canon.as_path();
                 let ct = match path.extension().and_then(|e| e.to_str()) {
                     Some("mp3") => "audio/mpeg",
                     Some("wav") => "audio/wav",
@@ -373,13 +420,12 @@ pub fn generate_image(
         .ok()
         .flatten()
         .and_then(|v| v.as_str().map(|s| s.to_string()));
-    let model = model_arg
-        .map(|s| s.to_string())
-        .or(setting_model)
-        .unwrap_or_else(|| DEFAULT_MODEL.to_string());
-    if model.trim().is_empty() || model.contains("..") || model.contains(' ') {
-        return Err("invalid model id".to_string());
-    }
+    let model = validate_model_id(
+        &model_arg
+            .map(|s| s.to_string())
+            .or(setting_model)
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+    )?;
     let image_size = image_size_arg.unwrap_or("square_hd");
 
     let out = tauri::async_runtime::block_on(async {
@@ -463,13 +509,12 @@ pub fn generate_video(
         .ok()
         .flatten()
         .and_then(|v| v.as_str().map(|s| s.to_string()));
-    let model = model_arg
-        .map(|s| s.to_string())
-        .or(setting_model)
-        .unwrap_or_else(|| DEFAULT_VIDEO_MODEL.to_string());
-    if model.trim().is_empty() || model.contains("..") || model.contains(' ') {
-        return Err("invalid model id".to_string());
-    }
+    let model = validate_model_id(
+        &model_arg
+            .map(|s| s.to_string())
+            .or(setting_model)
+            .unwrap_or_else(|| DEFAULT_VIDEO_MODEL.to_string()),
+    )?;
     let duration_secs = duration_secs.unwrap_or(5).clamp(3, 15);
     let aspect_ratio = aspect_ratio_arg.unwrap_or("16:9");
 
