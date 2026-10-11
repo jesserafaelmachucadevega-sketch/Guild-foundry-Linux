@@ -51,11 +51,11 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
   const load = useCallback(async () => {
     try {
       const list = await invoke<ArtifactMeta[]>('artifact_list', {
-        buildId: filterBuild.trim() || null,
+        build_id: filterBuild.trim() || null,
       });
-      setArtifacts(list);
+      setArtifacts(list ?? []);
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+      onToast(`Artifact load failed: ${fmtErr(e)}`);
     }
   }, [filterBuild, onToast]);
 
@@ -66,11 +66,11 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
   const verifyOne = useCallback(
     async (id: string) => {
       try {
-        const r = await invoke<VerifyResult>('artifact_verify', { artifactId: id });
+        const r = await invoke<VerifyResult>('artifact_verify', { artifact_id: id });
         setVerify((prev) => ({ ...prev, [id]: r }));
         onToast(r.ok ? 'SHA-256 matches.' : 'SHA-256 MISMATCH.');
       } catch (e) {
-        onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+        onToast(`Verify failed: ${fmtErr(e)}`);
       }
     },
     [onToast],
@@ -79,10 +79,10 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
   const exportOne = useCallback(
     async (id: string) => {
       try {
-        const r = await invoke<{ path: string }>('artifact_export', { artifactId: id });
+        const r = await invoke<{ path: string }>('artifact_export', { artifact_id: id });
         onToast(`Exported zip: ${r.path}`);
       } catch (e) {
-        onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+        onToast(`Export failed: ${fmtErr(e)}`);
       }
     },
     [onToast],
@@ -95,16 +95,17 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
     }
     try {
       const id = await invoke<string>('artifact_create', {
-        buildId: relBuild.trim(),
+        build_id: relBuild.trim(),
         kind,
         path: filePath.trim(),
       });
       onToast(`Artifact recorded: ${id.slice(0, 8)}`);
       setFilterBuild(relBuild.trim());
+      await load();
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+      onToast(`Record failed: ${fmtErr(e)}`);
     }
-  }, [relBuild, kind, filePath, onToast]);
+  }, [relBuild, kind, filePath, onToast, load]);
 
   const createRelease = useCallback(async () => {
     if (!relBuild.trim() || !relVersion.trim()) {
@@ -113,13 +114,13 @@ export function ArtifactPanel({ onToast }: { onToast: (t: string) => void }): Re
     }
     try {
       const r = await invoke<ReleaseMeta>('release_create', {
-        buildId: relBuild.trim(),
+        build_id: relBuild.trim(),
         version: relVersion.trim(),
         notes: relNotes,
       });
       onToast(`Release ${r.version} created (${r.id.slice(0, 8)}).`);
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+      onToast(`Release failed: ${fmtErr(e)}`);
     }
   }, [relBuild, relVersion, relNotes, onToast]);
 

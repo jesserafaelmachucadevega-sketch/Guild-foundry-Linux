@@ -785,7 +785,7 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
   const refresh = useCallback(async () => {
     try {
       const list = await invoke<McpServerView[]>('mcp_server_list');
-      setServers(list);
+      setServers(list ?? []);
     } catch (e) {
       onToast(errText(e));
     }

@@ -34,9 +34,14 @@ export function VoiceControls({ onTranscript, onToast, disabled }: Props) {
   const toggleMic = async () => {
     if (recording) {
       // Stop and transcribe.
+      const rec = recRef.current;
+      if (!rec) {
+        setRecording(false);
+        return;
+      }
       setWorking(true);
       try {
-        const text = await recRef.current!.stop();
+        const text = await rec.stop();
         recRef.current = null;
         setRecording(false);
         if (text.trim()) onTranscript(text.trim());

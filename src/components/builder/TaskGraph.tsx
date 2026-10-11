@@ -60,7 +60,7 @@ export default function TaskGraph({ runId, refreshKey }: { runId: string; refres
               <div className="bld-task-meta">
                 <div>id: {t.id}</div>
                 {t.parent_id && <div>parent: {t.parent_id}</div>}
-                {t.errors && <div style={{ color: 'var(--gf-danger)', whiteSpace: 'pre-wrap' }}>errors: {t.errors}</div>}
+                {t.errors && t.errors !== '[]' && <div style={{ color: 'var(--gf-danger)', whiteSpace: 'pre-wrap' }}>errors: {t.errors}</div>}
                 {t.outputs && t.outputs !== '{}' && <div>outputs: {t.outputs.slice(0, 500)}</div>}
                 {t.tool_calls && t.tool_calls !== '[]' && <div>tool calls: {t.tool_calls.slice(0, 500)}</div>}
                 {t.artifacts && t.artifacts !== '[]' && <div>artifacts: {t.artifacts.slice(0, 500)}</div>}

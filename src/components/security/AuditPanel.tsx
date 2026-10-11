@@ -137,7 +137,7 @@ export function AuditPanel(): React.ReactElement {
                 <tr key={e.id}>
                   <td className="sec-ts">{e.ts}</td>
                   <td>
-                    <span className={`sec-badge level-${e.level.toLowerCase()}`}>
+                    <span className={`sec-badge level-${(e.level ?? 'info').toLowerCase()}`}>
                       {e.level}
                     </span>
                   </td>

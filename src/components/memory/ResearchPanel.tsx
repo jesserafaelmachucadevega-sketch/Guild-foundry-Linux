@@ -17,7 +17,8 @@ interface CitedResult {
 }
 
 interface ResearchUpdate {
-  jobId: string;
+  job_id?: string;
+  jobId?: string;
   stage: string;
   progress: number;
   message: string;
@@ -57,15 +58,44 @@ export function ResearchPanel(): React.ReactElement {
     let unlisten: (() => void) | null = null;
     void listen<ResearchUpdate>('research://update', (event) => {
       const u = event.payload;
-      if (u.jobId !== activeJob.current) return;
+      const incomingId = u.job_id ?? u.jobId;
+      if (!incomingId || incomingId !== activeJob.current) return;
       setStage(u.stage);
       setProgress(u.progress);
       setMessage(u.message);
       if (u.stage === 'synthesize' || u.stage === 'failed') {
-        void invoke<ResearchStatus>('research_status', { jobId: u.jobId })
+        void invoke<ResearchStatus>('research_status', { job_id: incomingId })
           .then((s) => {
-            setStatus(s);
-            if (s.state === 'failed') setError(s.error);
+            // Backend serializes snake_case (key_sentences); normalize for the UI.
+            const raw = s as unknown as Record<string, unknown>;
+            const results = (Array.isArray(raw.results) ? raw.results : []).map((r) => {
+              const rr = r as Record<string, unknown>;
+              const keySentences = Array.isArray(rr.keySentences)
+                ? (rr.keySentences as string[])
+                : Array.isArray(rr.key_sentences)
+                  ? (rr.key_sentences as string[])
+                  : [];
+              return {
+                index: typeof rr.index === 'number' ? rr.index : 0,
+                title: typeof rr.title === 'string' ? rr.title : '',
+                url: typeof rr.url === 'string' ? rr.url : '',
+                snippet: typeof rr.snippet === 'string' ? rr.snippet : '',
+                keySentences,
+              } as CitedResult;
+            });
+            const norm: ResearchStatus = {
+              id: typeof raw.id === 'string' ? raw.id : '',
+              query: typeof raw.query === 'string' ? raw.query : '',
+              state: typeof raw.state === 'string' ? raw.state : '',
+              stage: typeof raw.stage === 'string' ? raw.stage : '',
+              progress: typeof raw.progress === 'number' ? raw.progress : 0,
+              results,
+              synthesis: typeof raw.synthesis === 'string' ? raw.synthesis : '',
+              comparisons: Array.isArray(raw.comparisons) ? (raw.comparisons as string[]) : [],
+              error: typeof raw.error === 'string' ? raw.error : '',
+            };
+            setStatus(norm);
+            if (norm.state === 'failed') setError(norm.error);
             setBusy(false);
           })
           .catch((e: unknown) => {
@@ -138,7 +168,7 @@ export function ResearchPanel(): React.ReactElement {
             <pre>{status.synthesis}</pre>
           </section>
 
-          {status.comparisons.length > 0 && (
+          {status.comparisons && status.comparisons.length > 0 && (
             <section className="mem-compare">
               <h4>Source comparison</h4>
               <ul>{status.comparisons.map((c, i) => <li key={i}>{c}</li>)}</ul>
@@ -146,14 +176,14 @@ export function ResearchPanel(): React.ReactElement {
           )}
 
           <section className="mem-sources">
-            <h4>Sources ({status.results.length})</h4>
-            {status.results.map((r) => (
+            <h4>Sources ({status.results?.length ?? 0})</h4>
+            {(status.results ?? []).map((r) => (
               <div key={r.index} className="mem-entry">
                 <div className="mem-entry-key">
                   [{r.index}] <a href={r.url} target="_blank" rel="noreferrer">{r.title || r.url}</a>
                 </div>
                 <div className="mem-entry-body">{r.snippet}</div>
-                {r.keySentences.map((s, i) => (
+                {(r.keySentences ?? []).map((s, i) => (
                   <div key={i} className="mem-quote">“{s}” <span className="gf-badge idle">[{r.index}]</span></div>
                 ))}
               </div>

@@ -107,6 +107,10 @@ export function CodeEditor({
   const modelsRef = useRef<Map<string, monaco.editor.ITextModel>>(new Map());
   const savedRef = useRef<Map<string, string>>(new Map());
   const decorRef = useRef<string[]>([]);
+  const projectRootRef = useRef(projectRoot);
+  useEffect(() => {
+    projectRootRef.current = projectRoot;
+  }, [projectRoot]);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [diffMode, setDiffMode] = useState(false);
@@ -166,7 +170,7 @@ export function CodeEditor({
     void (async () => {
       try {
         const content = await invoke<string>('ws_read', {
-          project_root: projectRoot,
+          project_root: projectRootRef.current,
           rel: openRequest.rel,
         });
         let model = modelsRef.current.get(openRequest.rel);
@@ -210,7 +214,7 @@ export function CodeEditor({
     if (!model) return;
     try {
       const content = model.getValue();
-      await invoke('ws_write', { project_root: projectRoot, rel, content });
+      await invoke('ws_write', { project_root: projectRootRef.current, rel, content });
       savedRef.current.set(rel, content);
       setTabs((ts) => ts.map((t) => (t.rel === rel ? { ...t, dirty: false } : t)));
       onDirtyChange?.(rel, false);
@@ -260,6 +264,11 @@ export function CodeEditor({
       const saved = savedRef.current.get(rel) ?? '';
       if (!current) return;
       const original = monaco.editor.createModel(saved, languageFor(rel));
+      // Track the transient original so it can be disposed on close —
+      // otherwise every toggle leaks a Monaco model.
+      (original as unknown as { __gfTransient?: boolean }).__gfTransient = true;
+      const prev = diffEditorRef.current?.getModel()?.original;
+      if (prev && (prev as unknown as { __gfTransient?: boolean }).__gfTransient) prev.dispose();
       if (diffContainerRef.current && !diffEditorRef.current) {
         diffEditorRef.current = monaco.editor.createDiffEditor(diffContainerRef.current, {
           theme: 'gf-dark',
@@ -271,7 +280,9 @@ export function CodeEditor({
       diffEditorRef.current?.setModel({ original, modified: current });
       setDiffMode(true);
     } else {
+      const prev = diffEditorRef.current?.getModel()?.original;
       diffEditorRef.current?.setModel(null);
+      if (prev && (prev as unknown as { __gfTransient?: boolean }).__gfTransient) prev.dispose();
       setDiffMode(false);
     }
   };
@@ -286,9 +297,11 @@ export function CodeEditor({
     if (agentHighlight && agentHighlight.rel === active) {
       const model = modelsRef.current.get(active);
       if (model) {
+        const lineCount = model.getLineCount();
+        const lines = agentHighlight.lines.filter((l) => Number.isInteger(l) && l >= 1 && l <= lineCount);
         decorRef.current = ed.deltaDecorations(
           [],
-          agentHighlight.lines.map((line) => ({
+          lines.map((line) => ({
             range: new monaco.Range(line, 1, line, 1),
             options: {
               isWholeLine: true,

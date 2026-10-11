@@ -68,20 +68,20 @@ export function MemoryPanel(): React.ReactElement {
     try {
       await invoke<void>('memory_put', {
         scope,
-        providerId,
-        modelName,
+        provider_id: providerId,
+        model_name: modelName,
         version,
-        scopeId: null,
+        scope_id: null,
         key,
         content,
-        metadataJson: null,
-        claimType,
+        metadata_json: null,
+        claim_type: claimType,
       });
       setStatus(`stored under ${scope} / ${providerId} / ${modelName || '—'} / ${version || '—'} / ${key}`);
       setKey('');
       setContent('');
     } catch (e) {
-      setStatus(`Desktop Capability Required — ${errText(e)}`);
+      setStatus(`Store failed — ${errText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -93,8 +93,8 @@ export function MemoryPanel(): React.ReactElement {
     try {
       const value = await invoke<string | null>('memory_get', {
         scope,
-        providerId,
-        modelName,
+        provider_id: providerId,
+        model_name: modelName,
         version,
         key,
       });
@@ -105,7 +105,7 @@ export function MemoryPanel(): React.ReactElement {
         setStatus('loaded');
       }
     } catch (e) {
-      setStatus(`Desktop Capability Required — ${errText(e)}`);
+      setStatus(`Load failed — ${errText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -118,14 +118,15 @@ export function MemoryPanel(): React.ReactElement {
       const r = await invoke<MemoryHit[]>('memory_search', {
         query,
         scope,
-        providerId,
-        modelName,
+        provider_id: providerId,
+        model_name: modelName,
         version,
       });
-      setHits(r);
-      setStatus(`${r.length} hit(s)`);
+      const hits = r ?? [];
+      setHits(hits);
+      setStatus(`${hits.length} hit(s)`);
     } catch (e) {
-      setStatus(`Desktop Capability Required — ${errText(e)}`);
+      setStatus(`Search failed — ${errText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -139,7 +140,7 @@ export function MemoryPanel(): React.ReactElement {
       setReport(r);
       setStatus('consolidation complete');
     } catch (e) {
-      setStatus(`Desktop Capability Required — ${errText(e)}`);
+      setStatus(`Consolidation failed — ${errText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -208,8 +209,8 @@ export function MemoryPanel(): React.ReactElement {
             <div className="mem-entry-body">{h.entry.content}</div>
             <div className="mem-entry-meta">
               <span className="gf-badge">{h.entry.claimType}</span>
-              <span className="gf-badge idle">score {h.score.toFixed(2)}</span>
-              <span className="gf-badge idle">importance {h.entry.importance.toFixed(2)}</span>
+              <span className="gf-badge idle">score {(typeof h.score === 'number' ? h.score : 0).toFixed(2)}</span>
+              <span className="gf-badge idle">importance {(typeof h.entry.importance === 'number' ? h.entry.importance : 0).toFixed(2)}</span>
               {h.entry.flagged && <span className="gf-badge err">flagged: {h.entry.flagged}</span>}
             </div>
           </div>

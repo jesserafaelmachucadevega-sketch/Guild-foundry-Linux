@@ -22,11 +22,18 @@ export function TemplateGallery({ onToast }: { onToast: (t: string) => void }): 
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [destRoot, setDestRoot] = useState('');
   const [appName, setAppName] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     void invoke<TemplateMeta[]>('template_list')
-      .then(setTemplates)
-      .catch((e: unknown) => onToast(`Desktop Capability Required: ${fmtErr(e)}`));
+      .then((t) => {
+        setTemplates(t ?? []);
+        setLoadError('');
+      })
+      .catch((e: unknown) => {
+        setLoadError(fmtErr(e));
+        onToast(`Template load failed: ${fmtErr(e)}`);
+      });
   }, [onToast]);
 
   const instantiate = useCallback(
@@ -37,13 +44,13 @@ export function TemplateGallery({ onToast }: { onToast: (t: string) => void }): 
       }
       try {
         const path = await invoke<string>('template_instantiate', {
-          templateId: id,
-          destRoot: destRoot.trim(),
-          appName: appName.trim(),
+          template_id: id,
+          dest_root: destRoot.trim(),
+          app_name: appName.trim(),
         });
         onToast(`Template created at ${path}`);
       } catch (e) {
-        onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+        onToast(`Create failed: ${fmtErr(e)}`);
       }
     },
     [destRoot, appName, onToast],
@@ -97,8 +104,11 @@ export function TemplateGallery({ onToast }: { onToast: (t: string) => void }): 
           </div>
         ))}
       </div>
-      {templates.length === 0 && (
+      {templates.length === 0 && !loadError && (
         <p className="gf-muted">Loading templates…</p>
+      )}
+      {loadError && (
+        <p className="gf-muted">Could not load templates: {loadError}</p>
       )}
     </div>
   );

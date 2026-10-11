@@ -468,11 +468,16 @@ pub struct SynthesisView {
 }
 
 /// The cross-model knowledge bridge. Groups memory entries matching `topic`
-/// into the five fixed categories. Phase 3's SynthesisPanel consumes this
-/// shape — it must stay exactly {verified_facts, model_claims,
+/// into the five fixed categories, plus any live debate `claims` passed from
+/// Phase 3's SynthesisPanel (which are not yet in the DB). Phase 3 consumes
+/// this shape — it must stay exactly {verified_facts, model_claims,
 /// user_decisions, inferences, unresolved}.
 #[tauri::command]
-pub fn memory_synthesize(app: tauri::AppHandle, topic: String) -> Result<SynthesisView, String> {
+pub fn memory_synthesize(
+    app: tauri::AppHandle,
+    topic: String,
+    claims: Option<Vec<String>>,
+) -> Result<SynthesisView, String> {
     let conn = open_db(&app)?;
     // Escape LIKE metacharacters so the topic is matched literally.
     let escaped = topic.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
@@ -514,6 +519,26 @@ pub fn memory_synthesize(app: tauri::AppHandle, topic: String) -> Result<Synthes
             "user_decision" => view.user_decisions.push(entry),
             "inference" => view.inferences.push(entry),
             _ => view.unresolved.push(entry),
+        }
+    }
+    // Live debate finals passed from the Conference Room are not in the DB
+    // yet — surface them as unresolved so the "N final positions" claim is
+    // honest and nothing is silently dropped.
+    if let Some(list) = claims {
+        for (i, c) in list.into_iter().enumerate().take(32) {
+            let trimmed = c.trim().to_string();
+            if trimmed.is_empty() {
+                continue;
+            }
+            view.unresolved.push(SynthesisEntry {
+                key: format!("debate-final-{}", i + 1),
+                content: trimmed,
+                scope: "workspace".to_string(),
+                provider: "conference".to_string(),
+                model: topic.clone(),
+                updated_at: String::new(),
+                flagged: String::new(),
+            });
         }
     }
     Ok(view)

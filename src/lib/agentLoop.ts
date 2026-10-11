@@ -122,9 +122,15 @@ async function awaitApproval(cfg: LoopConfig, approvalId: string): Promise<boole
   cfg.onLog(`waiting on human approval ${approvalId.slice(0, 8)}…`, 'gold');
   return await new Promise<boolean>((resolve, reject) => {
     let settled = false;
+    let listener: (() => void) | null = null;
+    let listenerPending = true;
     const finish = (v: boolean) => {
       if (settled) return;
       settled = true;
+      if (listener) listener();
+      // If listen() has not resolved yet, capture it when it does so it is
+      // still unsubscribed instead of leaking.
+      listenerPending = false;
       void unlisten();
       resolve(v);
     };
@@ -154,7 +160,13 @@ async function awaitApproval(cfg: LoopConfig, approvalId: string): Promise<boole
       }
     })
       .then((u) => {
-        unlisten = u;
+        if (settled || !listenerPending) {
+          // finish() already ran before listen resolved — unsubscribe now.
+          u();
+        } else {
+          unlisten = u;
+          listener = u;
+        }
       })
       .catch(() => undefined);
   });
@@ -167,6 +179,15 @@ async function gate(
   summary: string,
   payload: Record<string, unknown>,
 ): Promise<boolean> {
+  const KNOWN = new Set([
+    'architecture', 'plan',
+    'deletes', 'mass_replaces', 'system_packages', 'privileged_commands',
+    'credentials', 'pushes', 'releases', 'outside_project_writes', 'destructive_commands',
+  ]);
+  if (!KNOWN.has(kind)) {
+    cfg.onLog(`unknown gate kind '${kind}' from planner — proceeding without gate`, 'err');
+    return true;
+  }
   const fires = await invoke<boolean>('approval_gate_check', { kind, mode: cfg.mode });
   if (!fires) {
     cfg.onLog(`gate '${kind}' does not fire in ${cfg.mode} mode — proceeding`);
@@ -214,7 +235,7 @@ async function executeTask(cfg: LoopConfig, task: TaskRow, plan: PlanTask): Prom
       try {
         const res = await invoke<unknown>('tool_execute', {
           tool: plan.tool,
-          args: plan.tool_args ?? {},
+          args_json: JSON.stringify(plan.tool_args ?? {}),
           agent_id: task.agent,
           session_id: cfg.runId,
         });
@@ -334,7 +355,7 @@ export async function runAgentLoop(cfg: LoopConfig): Promise<void> {
       ],
       'architect',
     );
-    const m = arch.match(/```json([\s\S]*?)```/);
+    const m = arch.match(/```json([\s\S]*?)```/i);
     if (m) {
       try {
         const adrs = JSON.parse(m[1]) as Array<Record<string, string>>;

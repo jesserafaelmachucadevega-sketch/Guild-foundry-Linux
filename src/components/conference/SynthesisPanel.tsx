@@ -32,7 +32,7 @@ export function SynthesisPanel({ topic, claims, onToast }: SynthesisPanelProps):
       onToast(
         err instanceof DesktopCapabilityRequired
           ? 'Desktop Capability Required'
-          : 'Knowledge bridge lands in Phase 10',
+          : `Synthesis failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
       setBusy(false);
@@ -55,8 +55,7 @@ export function SynthesisPanel({ topic, claims, onToast }: SynthesisPanelProps):
       )}
       {unavailable && (
         <div className="gf-muted" style={{ fontSize: 12, marginTop: 8 }}>
-          Synthesis runs on the Phase 10 memory bridge, which is not implemented
-          yet — nothing was fabricated.
+          Synthesis failed — see the message above. Nothing was fabricated.
         </div>
       )}
     </div>

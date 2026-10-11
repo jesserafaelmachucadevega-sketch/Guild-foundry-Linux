@@ -75,7 +75,7 @@ export function Terminal({
   ]);
   const [input, setInput] = useState('');
   const [procs, setProcs] = useState<ProcInfo[]>([]);
-  const [pending, setPending] = useState<{ cmd: string; args: string[]; safety: Safety } | null>(null);
+  const [pending, setPending] = useState<{ cmd: string; args: string[]; safety: Safety; background: boolean } | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const [ackRisk, setAckRisk] = useState(false);
   const [running, setRunning] = useState(false);
@@ -191,8 +191,10 @@ export function Terminal({
       if (background) void runBackground(cmd, args);
       else void runExec(cmd, args);
     } else {
-      // Progressive confirmation for anything above SAFE.
-      setPending({ cmd, args, safety });
+      // Progressive confirmation for anything above SAFE. Remember whether
+      // the user asked for background so confirming does not silently
+      // downgrade to foreground.
+      setPending({ cmd, args, safety, background });
       setConfirmText('');
       setAckRisk(false);
     }
@@ -202,9 +204,10 @@ export function Terminal({
     if (!pending) return;
     if (pending.safety === 'HIGH_RISK' && confirmText.trim() !== pending.cmd) return;
     if (pending.safety === 'CRITICAL' && !ackRisk) return;
-    const { cmd, args } = pending;
+    const { cmd, args, background } = pending;
     setPending(null);
-    void runExec(cmd, args);
+    if (background) void runBackground(cmd, args);
+    else void runExec(cmd, args);
   };
 
   const killProc = async (id: string) => {

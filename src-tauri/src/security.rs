@@ -353,6 +353,35 @@ pub fn scrub_secrets(s: &str) -> String {
     secret_re().replace_all(s, "[REDACTED]").into_owned()
 }
 
+/// Recursively scrubs secret values inside parsed JSON metadata: any object
+/// key containing api_key/token/secret/password (case-insensitive) has its
+/// value replaced, and string values are regex-scrubbed as well.
+fn scrub_json(v: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(k, val)| {
+                    let kl = k.to_lowercase();
+                    if kl.contains("api_key")
+                        || kl.contains("apikey")
+                        || kl.contains("token")
+                        || kl.contains("secret")
+                        || kl.contains("password")
+                    {
+                        (k, Value::String("[REDACTED]".to_string()))
+                    } else {
+                        (k, scrub_json(val))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(arr) => Value::Array(arr.into_iter().map(scrub_json).collect()),
+        Value::String(s) => Value::String(scrub_secrets(&s)),
+        other => other,
+    }
+}
+
 /// Path to the application SQLite database. Intentionally mirrors db.rs;
 /// see module header for why it is duplicated rather than shared.
 fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -392,7 +421,7 @@ pub fn sec_audit(
         ));
     }
     let meta: serde_json::Value = match serde_json::from_str(&meta_json) {
-        Ok(v) => v,
+        Ok(v) => scrub_json(v),
         Err(_) => serde_json::json!({ "raw": scrub_secrets(&meta_json) }),
     };
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);

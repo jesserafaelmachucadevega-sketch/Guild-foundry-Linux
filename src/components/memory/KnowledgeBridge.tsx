@@ -47,12 +47,25 @@ export function KnowledgeBridge(): React.ReactElement {
     setBusy(true);
     setStatus('');
     try {
-      const v = await invoke<SynthesisView>('memory_synthesize', { topic });
+      const raw = await invoke<Record<string, unknown>>('memory_synthesize', { topic });
+      // Backend uses camelCase (serde rename_all); normalize defensively so a
+      // missing bucket never crashes the count or render.
+      const norm = (k: string): SynthesisEntry[] => {
+        const v = (raw as unknown as Record<string, unknown>)[k];
+        return Array.isArray(v) ? (v as SynthesisEntry[]) : [];
+      };
+      const v: SynthesisView = {
+        verifiedFacts: norm('verifiedFacts'),
+        modelClaims: norm('modelClaims'),
+        userDecisions: norm('userDecisions'),
+        inferences: norm('inferences'),
+        unresolved: norm('unresolved'),
+      };
       setView(v);
       const total = BUCKETS.reduce((n, b) => n + v[b.id].length, 0);
       setStatus(`${total} entr${total === 1 ? 'y' : 'ies'} across 5 categories`);
     } catch (e) {
-      setStatus(`Desktop Capability Required — ${errText(e)}`);
+      setStatus(`Synthesis failed — ${errText(e)}`);
     } finally {
       setBusy(false);
     }

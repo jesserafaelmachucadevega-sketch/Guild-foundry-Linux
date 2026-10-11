@@ -30,16 +30,23 @@ export default function RequirementsPanel({
   const [busy, setBusy] = useState(false);
   const [adrs, setAdrs] = useState<AdrRow[]>([]);
   const [adrTitle, setAdrTitle] = useState('');
+  const [adrContext, setAdrContext] = useState('');
   const [adrDecision, setAdrDecision] = useState('');
+  const [adrConsequences, setAdrConsequences] = useState('');
   const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(() => {
     invoke<RequirementsDoc>('requirements_get', { run_id: runId })
       .then((d) => {
         setDoc(d.doc_json);
         setApproved(d.architecture_approved);
+        setLoadFailed(false);
       })
-      .catch(() => setDoc(JSON.stringify({ summary: '' }, null, 2)));
+      .catch(() => {
+        setDoc(JSON.stringify({ summary: '' }, null, 2));
+        setLoadFailed(true);
+      });
     invoke<AdrRow[]>('adr_list', { run_id: runId })
       .then(setAdrs)
       .catch(() => setAdrs([]));
@@ -52,6 +59,10 @@ export default function RequirementsPanel({
   const ask = async () => {
     const q = question.trim();
     if (!q || busy) return;
+    if (!model.providerId || !model.modelId) {
+      setError('Pick a provider and model before asking.');
+      return;
+    }
     setBusy(true);
     setError('');
     setQuestion('');
@@ -126,12 +137,14 @@ export default function RequirementsPanel({
       await invoke('adr_create', {
         run_id: runId,
         title,
-        context: '',
+        context: adrContext,
         decision: adrDecision,
-        consequences: '',
+        consequences: adrConsequences,
       });
       setAdrTitle('');
+      setAdrContext('');
       setAdrDecision('');
+      setAdrConsequences('');
       const rows = await invoke<AdrRow[]>('adr_list', { run_id: runId });
       setAdrs(rows);
       onChanged();
@@ -167,6 +180,9 @@ export default function RequirementsPanel({
       </div>
 
       <div className="gf-label">Requirements document (JSON)</div>
+      {loadFailed && (
+        <div className="bld-error">Could not load saved requirements — showing a blank template. Saving will overwrite.</div>
+      )}
       <textarea
         className="gf-textarea"
         style={{ width: '100%', minHeight: 140, fontFamily: 'var(--gf-mono)', fontSize: 12 }}
@@ -202,9 +218,21 @@ export default function RequirementsPanel({
         />
         <input
           className="gf-input"
+          placeholder="Context"
+          value={adrContext}
+          onChange={(e) => setAdrContext(e.target.value)}
+        />
+        <input
+          className="gf-input"
           placeholder="Decision"
           value={adrDecision}
           onChange={(e) => setAdrDecision(e.target.value)}
+        />
+        <input
+          className="gf-input"
+          placeholder="Consequences"
+          value={adrConsequences}
+          onChange={(e) => setAdrConsequences(e.target.value)}
         />
         <button className="gf-btn" onClick={() => void addAdr()}>
           Add ADR

@@ -186,7 +186,13 @@ fn truncate_output(s: &str) -> String {
     if s.len() <= MAX_OUTPUT_CHARS {
         s.to_string()
     } else {
-        let mut out = s[..MAX_OUTPUT_CHARS].to_string();
+        // Cut on a char boundary so multi-byte UTF-8 is never split (which
+        // would panic on byte slicing). Walk back to the nearest boundary.
+        let mut end = MAX_OUTPUT_CHARS;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        let mut out = s[..end].to_string();
         out.push_str("\n…[output truncated]");
         out
     }

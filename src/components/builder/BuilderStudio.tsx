@@ -51,6 +51,7 @@ export default function BuilderStudio() {
   const [error, setError] = useState('');
   const [projectRoot, setProjectRoot] = useState('');
   const [prompts, setPrompts] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
   const stopRef = useRef(false);
   const runningRef = useRef(false);
 
@@ -106,6 +107,7 @@ export default function BuilderStudio() {
     async (runId: string, runGoal: string, runMode: RunMode) => {
       if (runningRef.current) return;
       runningRef.current = true;
+      setRunning(true);
       stopRef.current = false;
       setError('');
       logLine(`starting orchestration loop (mode ${runMode})`, 'gold');
@@ -132,11 +134,12 @@ export default function BuilderStudio() {
         setError(msg);
       } finally {
         runningRef.current = false;
+        setRunning(false);
         void refreshRun(runId);
         setHistoryTick((t) => t + 1);
       }
     },
-    [providerId, modelId, prompts, logLine, refreshRun],
+    [providerId, modelId, prompts, logLine, refreshRun, projectRoot],
   );
 
   const startRun = async () => {
@@ -251,7 +254,7 @@ export default function BuilderStudio() {
               ))}
             </select>
             <div className="bld-form-row" style={{ marginTop: 12 }}>
-              <button className="gf-btn primary" onClick={() => void startRun()} disabled={runningRef.current}>
+              <button className="gf-btn primary" onClick={() => void startRun()} disabled={running}>
                 Start build
               </button>
               <button className="gf-btn danger" onClick={() => void cancelRun()} disabled={!run || run.status !== 'running'}>

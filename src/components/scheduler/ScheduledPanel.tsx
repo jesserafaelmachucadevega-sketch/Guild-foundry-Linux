@@ -83,8 +83,8 @@ export function ScheduledPanel({ onToast }: { onToast: (t: string) => void }): R
       setModels([]);
       return;
     }
-    void invoke<string[]>('provider_list_models', { providerId: form.provider_id })
-      .then((m) => setModels(m))
+    void invoke<Array<{ model_id: string }>>('provider_list_models', { provider_id: form.provider_id })
+      .then((m) => setModels((m ?? []).map((x) => (typeof x === 'string' ? x : x.model_id)).filter(Boolean)))
       .catch(() => setModels([]));
   }, [form.provider_id]);
 

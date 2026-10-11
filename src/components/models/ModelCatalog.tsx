@@ -328,7 +328,7 @@ export function ModelCatalog({ onToast }: Props): React.ReactElement {
         )}
         {!routerEnabled && (
           <span className="gf-muted" style={{ fontSize: 12 }}>
-            Automatic routing is off — suggestions use your configured default model.
+            Automatic routing is off — manual Suggest still queries the router once; pick a model below to bypass it entirely.
           </span>
         )}
       </div>

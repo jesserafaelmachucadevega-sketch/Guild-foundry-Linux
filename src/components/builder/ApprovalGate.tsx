@@ -26,6 +26,7 @@ export default function ApprovalGate() {
 
   if (pending.length === 0) return null;
   const current = pending[0];
+  if (!current) return null;
 
   const resolve = async (decision: 'approved' | 'denied') => {
     setBusy(true);
@@ -45,9 +46,9 @@ export default function ApprovalGate() {
     }
   };
 
-  let payloadPretty = current.payload_json;
+  let payloadPretty = current.payload_json ?? '';
   try {
-    payloadPretty = JSON.stringify(JSON.parse(current.payload_json), null, 2);
+    payloadPretty = JSON.stringify(JSON.parse(current.payload_json ?? ''), null, 2);
   } catch {
     /* show raw */
   }
@@ -56,7 +57,7 @@ export default function ApprovalGate() {
     <div className="gf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Approval gate">
       <div className="gf-modal" style={{ maxWidth: 560 }}>
         <h3 style={{ color: 'var(--gf-gold)', marginTop: 0 }}>Approval required</h3>
-        <div className="bld-approval-kind">{current.kind.replace(/_/g, ' ')}</div>
+        <div className="bld-approval-kind">{(current.kind ?? '').replace(/_/g, ' ')}</div>
         <p style={{ fontSize: 13 }}>{current.summary}</p>
         <pre
           className="bld-log"

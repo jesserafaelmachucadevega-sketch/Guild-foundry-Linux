@@ -70,9 +70,10 @@ pub fn secret_set(app: tauri::AppHandle, key: String, value: String) -> Result<(
     Ok(())
 }
 
-/// Fetch a secret. Only the Rust backend calls this for provider auth;
-/// the frontend must never receive raw secret values.
-#[tauri::command]
+/// Fetch a secret. Backend-only: used by provider auth / media / MCP.
+/// Deliberately NOT a `#[tauri::command]` — the frontend must never receive
+/// raw secret values (it uses `secret_list_keys` for presence checks and
+/// `secret_set`/`secret_delete` for writes).
 pub fn secret_get(key: String) -> Result<Option<String>, String> {
     let k = validate_key(&key)?.to_string();
     Ok(keyring_get(&k))

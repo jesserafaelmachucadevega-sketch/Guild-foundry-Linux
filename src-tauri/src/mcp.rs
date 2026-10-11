@@ -756,7 +756,28 @@ pub async fn mcp_server_update(
 }
 
 fn upsert_meta(conn: &Connection, server_id: &str, input: &McpServerInput) -> Result<(), String> {
-    let none = String::new();
+    // Preserve existing OAuth config when the edit form sends empty strings:
+    // the list view intentionally omits OAuth secrets, so a plain
+    // name/URL edit must not wipe the stored OAuth client config.
+    let existing: Option<(String, String, String, String, String)> = conn
+        .query_row(
+            "SELECT oauth_client_id, oauth_authorization_url, oauth_token_url, oauth_scopes, oauth_redirect_uri
+             FROM mcp_server_meta WHERE server_id = ?1",
+            params![server_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .ok();
+    let keep = |new_val: Option<&String>, old_val: Option<String>| -> String {
+        match new_val {
+            Some(v) if !v.trim().is_empty() => v.clone(),
+            _ => old_val.unwrap_or_default(),
+        }
+    };
+    let oauth_client_id = keep(input.oauth_client_id.as_ref(), existing.clone().map(|e| e.0));
+    let oauth_authorization_url = keep(input.oauth_authorization_url.as_ref(), existing.clone().map(|e| e.1));
+    let oauth_token_url = keep(input.oauth_token_url.as_ref(), existing.clone().map(|e| e.2));
+    let oauth_scopes = keep(input.oauth_scopes.as_ref(), existing.clone().map(|e| e.3));
+    let oauth_redirect_uri = keep(input.oauth_redirect_uri.as_ref(), existing.map(|e| e.4));
     conn.execute(
         "INSERT INTO mcp_server_meta
             (server_id, auth_type, oauth_client_id, oauth_authorization_url, oauth_token_url,
@@ -775,11 +796,11 @@ fn upsert_meta(conn: &Connection, server_id: &str, input: &McpServerInput) -> Re
         params![
             server_id,
             input.auth_type,
-            input.oauth_client_id.as_ref().unwrap_or(&none),
-            input.oauth_authorization_url.as_ref().unwrap_or(&none),
-            input.oauth_token_url.as_ref().unwrap_or(&none),
-            input.oauth_scopes.as_ref().unwrap_or(&none),
-            input.oauth_redirect_uri.as_ref().unwrap_or(&none),
+            oauth_client_id,
+            oauth_authorization_url,
+            oauth_token_url,
+            oauth_scopes,
+            oauth_redirect_uri,
             serde_json::to_string(input.allowed_tools.as_ref().unwrap_or(&Vec::new()))
                 .unwrap_or_else(|_| "[]".to_string()),
             serde_json::to_string(input.denied_tools.as_ref().unwrap_or(&Vec::new()))

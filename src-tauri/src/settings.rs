@@ -32,7 +32,8 @@ pub fn settings_load_prompts(
 
 #[tauri::command]
 pub fn settings_set(app: tauri::AppHandle, key: String, value: serde_json::Value) -> Result<(), String> {
-    if key.starts_with("secret") || key.contains("api_key") || key.contains("token") {
+    let kl = key.to_lowercase();
+    if kl.starts_with("secret") || kl.contains("api_key") || kl.contains("apikey") || kl.contains("token") || kl.contains("password") {
         return Err("refused: secrets must use the keyring, not settings".to_string());
     }
     let store = app.store("settings.json").map_err(|e| e.to_string())?;

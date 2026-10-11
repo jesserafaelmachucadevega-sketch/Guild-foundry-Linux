@@ -89,35 +89,46 @@ function TreeNode({
   };
 
   return (
-    <div>
+      <div>
       <div
         className={`gf-tree-node${selected === entry.rel ? ' selected' : ''}`}
         onClick={toggle}
         onContextMenu={(e) => {
           e.preventDefault();
-          // Simple context actions via prompt-free buttons would need a menu;
-          // double-click renames, alt-click deletes.
+          onSelect(entry.rel, false);
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
           void doRename();
         }}
-        title="Double-click to rename. Right-click menu: use toolbar actions."
+        title="Double-click to rename. Click to select, then use Rename / Delete buttons."
       >
         <span className="gf-caret">{entry.is_dir ? (expanded ? '▾' : '▸') : ''}</span>
         <span>{entry.is_dir ? '📁' : '📄'}</span>
         <span className="gf-fname">{entry.name}</span>
-        {selected === entry.rel && entry.is_dir && (
-          <button
-            className="gf-btn"
-            style={{ padding: '0 6px', fontSize: 10 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              void doDelete();
-            }}
-          >
-            del
-          </button>
+        {selected === entry.rel && (
+          <>
+            <button
+              className="gf-btn"
+              style={{ padding: '0 6px', fontSize: 10 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                void doRename();
+              }}
+            >
+              rename
+            </button>
+            <button
+              className="gf-btn"
+              style={{ padding: '0 6px', fontSize: 10 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                void doDelete();
+              }}
+            >
+              del
+            </button>
+          </>
         )}
       </div>
       {entry.is_dir && expanded && (
@@ -176,11 +187,28 @@ export function ProjectExplorer({
   const createEntry = async (isDir: boolean) => {
     const name = window.prompt(isDir ? 'New folder name:' : 'New file name (relative path):');
     if (!name) return;
-    const base = selected
-      ? root.find((e) => e.rel === selected)?.is_dir
-        ? selected
-        : selected.split('/').slice(0, -1).join('/')
-      : '';
+    if (name.includes('..')) {
+      onToast('Name may not contain ".."');
+      return;
+    }
+    // Top-level list only knows top-level dirs; for nested selections fall
+    // back to treating the selection as a directory when its last segment
+    // has no file extension, otherwise use its parent directory.
+    let base = '';
+    if (selected) {
+      const top = root.find((e) => e.rel === selected);
+      if (top?.is_dir) base = selected;
+      else if (root.some((e) => selected === e.rel || selected.startsWith(`${e.rel}/`))) base = selected.split('/').slice(0, -1).join('/');
+      else {
+        const last = selected.split('/').pop() ?? '';
+        base = last.includes('.') ? selected.split('/').slice(0, -1).join('/') : selected;
+      }
+      // If the selection itself looks like a file, create beside it.
+      if (!top && base === selected) {
+        const last = selected.split('/').pop() ?? '';
+        if (last.includes('.')) base = selected.split('/').slice(0, -1).join('/');
+      }
+    }
     const rel = base ? `${base}/${name}` : name;
     try {
       await invoke('ws_create', { project_root: projectRoot, rel, is_dir: isDir });

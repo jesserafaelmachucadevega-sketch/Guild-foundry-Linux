@@ -3,7 +3,7 @@
 // The still is the default face; activity clips animate from it.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../lib/api';
 
 import { GIRL_DEFAULT } from '../../assets/avatar/girl_default';
 import { BOY_DEFAULT } from '../../assets/avatar/boy_default';
@@ -61,7 +61,7 @@ export function AvatarPicker({ onToast }: { onToast: (t: string) => void }): Rea
         r.onerror = () => reject(new Error('read failed'));
         r.readAsDataURL(file);
       });
-      await invoke('avatar_upload_image', { dataBase64: dataUrl });
+      await invoke('avatar_upload_image', { data_base64: dataUrl });
       setCustom(true);
       emitAvatarChange();
       onToast('Custom avatar set');

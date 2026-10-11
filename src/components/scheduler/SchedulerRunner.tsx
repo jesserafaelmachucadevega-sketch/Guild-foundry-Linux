@@ -32,7 +32,7 @@ async function runOnce(task: DueTask, onToast: (t: string) => void): Promise<voi
       id: task.id,
       status: 'error',
       summary: 'No provider/model configured for this task.',
-      sessionId,
+      session_id: sessionId,
     });
     return;
   }
@@ -40,13 +40,13 @@ async function runOnce(task: DueTask, onToast: (t: string) => void): Promise<voi
   // Auto-approve grant: only when the user explicitly enabled it for this task.
   if (task.auto_approve) {
     try {
-      await invoke('scheduler_grant_session', { sessionId, taskId: task.id });
+      await invoke('scheduler_grant_session', { session_id: sessionId, task_id: task.id });
     } catch (e) {
       await invoke('scheduler_complete', {
         id: task.id,
         status: 'error',
         summary: `Auto-approve grant failed: ${e instanceof Error ? e.message : String(e)}`,
-        sessionId,
+        session_id: sessionId,
       });
       return;
     }
@@ -102,7 +102,7 @@ async function runOnce(task: DueTask, onToast: (t: string) => void): Promise<voi
       id: task.id,
       status: result.status,
       summary,
-      sessionId,
+      session_id: sessionId,
     });
     await invoke('scheduler_notify', {
       title: `Scheduled: ${task.name}`,

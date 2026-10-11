@@ -467,8 +467,11 @@ export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): R
         roundTexts.current[4] ??
         roundTexts.current[DEBATE_ROUNDS.length - 1] ??
         [];
-      setClaimTexts(finals.filter(Boolean));
-      setWinnerOpen(true);
+      const cleaned = finals.filter(Boolean);
+      setClaimTexts(cleaned);
+      // Only pop the winner dialog when there is something to judge —
+      // errors and empty debates stay on the transcript instead.
+      if (!ctrl.current.stopped && cleaned.length > 0) setWinnerOpen(true);
     }
   }
 

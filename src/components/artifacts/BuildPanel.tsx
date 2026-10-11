@@ -92,11 +92,20 @@ export function BuildPanel({ onToast }: { onToast: (t: string) => void }): React
   const refresh = useCallback(async () => {
     if (!buildId) return;
     try {
-      const s = await invoke<BuildStatus>('build_status', { buildId });
+      const s = await invoke<BuildStatus>('build_status', { build_id: buildId });
       setStatus(s);
+      // Merge the polled log tail so missed live events are not lost.
+      if (s.log_tail && s.log_tail.length > 0) {
+        setLiveLines((prev) => {
+          const seen = new Set(prev.map((l) => l.line));
+          const extra = s.log_tail
+            .filter((line) => !seen.has(line))
+            .map((line) => ({ build_id: buildId, line, stream: 'stdout' }));
+          return extra.length > 0 ? [...prev.slice(-400), ...extra].slice(-400) : prev;
+        });
+      }
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
-      if (pollRef.current) window.clearInterval(pollRef.current);
+      onToast(`Build status failed: ${fmtErr(e)}`);
     }
   }, [buildId, onToast]);
 
@@ -122,7 +131,7 @@ export function BuildPanel({ onToast }: { onToast: (t: string) => void }): React
     }
     try {
       const id = await invoke<string>('build_start', {
-        projectRoot: projectRoot.trim(),
+        project_root: projectRoot.trim(),
         target,
       });
       setBuildId(id);
@@ -132,17 +141,17 @@ export function BuildPanel({ onToast }: { onToast: (t: string) => void }): React
       setReleased(false);
       onToast(`Build started: ${id.slice(0, 8)}`);
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+      onToast(`Build start failed: ${fmtErr(e)}`);
     }
   }, [projectRoot, target, onToast]);
 
   const cancel = useCallback(async () => {
     if (!buildId) return;
     try {
-      await invoke('build_cancel', { buildId });
+      await invoke('build_cancel', { build_id: buildId });
       onToast('Build cancel requested.');
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+      onToast(`Cancel failed: ${fmtErr(e)}`);
     }
   }, [buildId, onToast]);
 
@@ -153,19 +162,19 @@ export function BuildPanel({ onToast }: { onToast: (t: string) => void }): React
     }
     try {
       const summary = await invoke<string>('test_run', {
-        projectRoot: projectRoot.trim(),
+        project_root: projectRoot.trim(),
       });
       setLiveLines((prev) => [
-        ...prev,
+        ...prev.slice(-400),
         ...summary.split('\n').map((line) => ({
           build_id: buildId ?? 'tests',
           line,
           stream: 'stdout',
         })),
-      ]);
+      ].slice(-400));
       onToast('Test run finished — see log.');
     } catch (e) {
-      onToast(`Desktop Capability Required: ${fmtErr(e)}`);
+      onToast(`Test run failed: ${fmtErr(e)}`);
     }
   }, [projectRoot, buildId, onToast]);
 

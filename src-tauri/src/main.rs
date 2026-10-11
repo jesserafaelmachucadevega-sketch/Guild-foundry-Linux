@@ -150,7 +150,6 @@ fn main() {
             ratelimit::ratelimit_status,
             ratelimit::ratelimit_quota_notice,
             secrets::secret_set,
-            secrets::secret_get,
             secrets::secret_delete,
             secrets::secret_list_keys,
             // Phase 4 — workspace, terminal, git

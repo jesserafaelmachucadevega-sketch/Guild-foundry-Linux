@@ -282,6 +282,9 @@ export function ParticipantBar({
                 </div>
 
                 <span className="gf-label">Tool permissions</span>
+                <div className="gf-muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                  Advisory for debate prompts — not enforced on tool execution.
+                </div>
                 <div className="gf-row" style={{ gap: 10, flexWrap: 'wrap' }}>
                   {TOOL_KEYS.map(({ key, label }) => (
                     <label key={key} className="gf-row" style={{ gap: 4, fontSize: 12 }}>

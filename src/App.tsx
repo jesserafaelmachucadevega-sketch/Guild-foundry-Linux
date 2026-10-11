@@ -68,7 +68,7 @@ const SECTION_TITLE: Record<NavSection, string> = {
   settings: 'Settings',
 };
 
-function HomePanel({ onToast }: { onToast: (t: string) => void }): React.ReactElement {
+function HomePanel({ onToast, onNavigate }: { onToast: (t: string) => void; onNavigate: (s: NavSection) => void }): React.ReactElement {
   const [env, setEnv] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
@@ -91,13 +91,13 @@ function HomePanel({ onToast }: { onToast: (t: string) => void }): React.ReactEl
         <div className="gf-row" style={{ marginTop: 12, flexWrap: 'wrap' }}>
           <button
             className="gf-btn primary"
-            onClick={() => onToast('Use the Projects section to start a project')}
+            onClick={() => onNavigate('projects')}
           >
             New Project
           </button>
           <button
             className="gf-btn"
-            onClick={() => onToast('Use the Conference Room section')}
+            onClick={() => onNavigate('conference')}
           >
             New Conference
           </button>
@@ -241,7 +241,7 @@ export default function App(): React.ReactElement {
           />
         </div>
       ) : section === 'home' ? (
-        <HomePanel onToast={pushToast} />
+        <HomePanel onToast={pushToast} onNavigate={openSection} />
       ) : section === 'builder' ? (
         <BuilderStudio />
       ) : section === 'conference' ? (

@@ -267,7 +267,7 @@ function ApprovalWidget({ widget, onToast }: { widget: SduiApproval; onToast: (t
   const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null);
   const decide = (d: 'approved' | 'rejected') => {
     setDecision(d);
-    onToast(d === 'approved' ? 'Approved' : 'Rejected');
+    onToast(d === 'approved' ? 'Noted (local poll only — use Builder approvals for real gates)' : 'Rejected (local poll only)');
   };
   return (
     <div className="gf-sdui gf-sdui-approval">

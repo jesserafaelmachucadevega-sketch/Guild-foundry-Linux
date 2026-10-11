@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Guild Foundry AI — Phase 4: Git panel.
 // Status, diff, log, branches, commit, stash, pull. Push is never automatic:
-// the push button opens a confirmation modal (remote, branch, outgoing
+// the push button opens a confirmation modal (remote, branch, recent
 // commits, changed files, diff summary) and only then calls git_push with
 // confirmed=true.
 import React, { useCallback, useEffect, useState } from 'react';
@@ -147,14 +147,15 @@ export function GitPanel({
 
   const [pullOut, setPullOut] = useState('');
 
-  // Pre-push modal: gather remote, branch, outgoing commits, changed files,
+  // Pre-push modal: gather remote, branch, recent commits, changed files,
   // and a diff summary before anything is pushed.
   const openPushModal = async () => {
     try {
       const branch =
         pushBranch || branches.find((b) => b.current)?.name || 'main';
       setPushBranch(branch);
-      // Outgoing commits: commits not on the upstream (best effort).
+      // Recent commits (best effort preview — not a true upstream diff;
+      // the backend has no @{u}..HEAD query, so label honestly).
       let commits: GitCommit[] = [];
       try {
         commits = await invoke<GitCommit[]>('git_log', {

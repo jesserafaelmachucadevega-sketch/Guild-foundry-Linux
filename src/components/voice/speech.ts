@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../lib/api';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 const SPEECH_KEY = 'media.speech_enabled';
@@ -73,9 +73,10 @@ export async function startMicRecording(): Promise<{ stop: () => Promise<string>
       reader.onloadend = async () => {
         try {
           const base64 = (reader.result as string).split(',')[1] ?? '';
+          if (!base64) throw new Error('empty recording — no audio captured');
           const text = await invoke<string>('media_transcribe_mic', {
-            audioBase64: base64,
-            contentType: blob.type || 'audio/webm',
+            audio_base64: base64,
+            content_type: blob.type || 'audio/webm',
           });
           resolve(text);
         } catch (e) {
