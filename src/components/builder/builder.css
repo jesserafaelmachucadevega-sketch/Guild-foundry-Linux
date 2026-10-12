@@ -141,6 +141,15 @@
   letter-spacing: 0.05em;
 }
 
+.bld-history-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 24px;
+}
+
 .bld-history-item {
   display: flex;
   justify-content: space-between;

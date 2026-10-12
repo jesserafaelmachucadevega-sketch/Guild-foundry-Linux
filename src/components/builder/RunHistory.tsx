@@ -48,7 +48,7 @@ export default function RunHistory({
   if (runs.length === 0) return <div className="gf-muted">No builder runs yet.</div>;
 
   return (
-    <div>
+    <div className="bld-history-list">
       {runs.map((r) => (
         <div key={r.id}>
           <div

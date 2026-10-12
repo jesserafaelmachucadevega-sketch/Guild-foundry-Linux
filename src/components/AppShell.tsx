@@ -2,44 +2,31 @@ import React, { useCallback, useState } from 'react';
 import type { ToastMsg, ViewMode } from '../lib/types';
 import { invoke, isDesktop } from '../lib/api';
 
-// Master spec Section 5: left navigation across all product areas.
+import builderIcon from '../assets/nav/builder.png';
+import conferenceIcon from '../assets/nav/conference.png';
+import projectsIcon from '../assets/nav/projects.png';
+import settingsIcon from '../assets/nav/settings.png';
+import agentIcon from '../assets/nav/agent.png';
+import modelsIcon from '../assets/nav/models.png';
+import appLogo from '../assets/logo/foundry-logo.png';
+
+// Master spec Section 5: six primary hubs. Former single-purpose views live
+// as interior tabs inside their hub (Builder, Model & API, System).
 export type NavSection =
-  | 'home'
+  | 'agent'
   | 'builder'
   | 'conference'
   | 'projects'
-  | 'providers'
-  | 'models'
-  | 'tools'
-  | 'mcp'
-  | 'connections'
-  | 'scheduled'
-  | 'memory'
-  | 'artifacts'
-  | 'runs'
-  | 'security'
-  | 'diagnostics'
-  | 'updates'
-  | 'settings';
+  | 'models-api'
+  | 'settings-system';
 
-export const NAV_ITEMS: { id: NavSection; label: string; fullName: string; detail: string; glyph: string; phase: number }[] = [
-  { id: 'home', label: 'Home', fullName: 'Home', detail: 'Start here: environment status and quick entry points.', glyph: 'H', phase: 1 },
-  { id: 'builder', label: 'Builder', fullName: 'App Builder Studio', detail: 'Multi-agent builds with approval gates and task graph.', glyph: 'B', phase: 5 },
-  { id: 'conference', label: 'Conf.', fullName: 'Conference Room', detail: '1–4 models debate, vote, and synthesize answers.', glyph: 'C', phase: 3 },
-  { id: 'projects', label: 'Proj.', fullName: 'Projects', detail: 'Files, editor, terminal, Git, and checkpoints.', glyph: 'P', phase: 4 },
-  { id: 'providers', label: 'Prov.', fullName: 'Providers', detail: 'LLM API connections, keys in OS keyring, handshake.', glyph: 'V', phase: 2 },
-  { id: 'models', label: 'Models', fullName: 'Models', detail: 'Catalog, favorites, aliases, and model router.', glyph: 'M', phase: 2 },
-  { id: 'tools', label: 'Tools', fullName: 'Tools', detail: 'Tool execution loop and capability handshake.', glyph: 'T', phase: 6 },
-  { id: 'mcp', label: 'MCP', fullName: 'MCP Servers', detail: 'Raw MCP servers, tools, auth, and test calls.', glyph: 'X', phase: 7 },
-  { id: 'connections', label: 'Conn.', fullName: 'Connections', detail: 'One-click Gmail, Drive, GitHub, and app access.', glyph: 'N', phase: 7 },
-  { id: 'scheduled', label: 'Sched.', fullName: 'Scheduled', detail: 'Scheduled agent runs and background jobs.', glyph: 'W', phase: 14 },
-  { id: 'memory', label: 'Mem.', fullName: 'Memory', detail: 'Model-isolated memory, bridge, and research.', glyph: 'E', phase: 10 },
-  { id: 'artifacts', label: 'Artif.', fullName: 'Artifacts', detail: 'Builds, templates, releases, and exports.', glyph: 'A', phase: 8 },
-  { id: 'runs', label: 'Runs', fullName: 'Runs', detail: 'Agent run history and recovery.', glyph: 'R', phase: 5 },
-  { id: 'security', label: 'Sec.', fullName: 'Security', detail: 'Constitution, audit log, and safety checks.', glyph: 'S', phase: 9 },
-  { id: 'diagnostics', label: 'Diag.', fullName: 'Diagnostics', detail: 'System health, tokens, network, and workers.', glyph: 'D', phase: 11 },
-  { id: 'updates', label: 'Upd.', fullName: 'Updates', detail: 'Update feed, staging, and explicit install.', glyph: 'U', phase: 11 },
-  { id: 'settings', label: 'Setup', fullName: 'Settings', detail: 'Theme, credentials, and system prompts.', glyph: '*', phase: 1 },
+export const NAV_ITEMS: { id: NavSection; label: string; fullName: string; detail: string; icon: string; phase: number }[] = [
+  { id: 'agent', label: 'Agent', fullName: 'Personal Agent', detail: 'Daily companion: chat, tasks, mail, reminders, media.', icon: agentIcon, phase: 15 },
+  { id: 'builder', label: 'Builder', fullName: 'App Builder Studio', detail: 'Multi-agent builds: workspace, runs, scheduled, artifacts.', icon: builderIcon, phase: 5 },
+  { id: 'conference', label: 'Conf.', fullName: 'Conference Room', detail: '1–4 models debate, vote, and synthesize answers.', icon: conferenceIcon, phase: 3 },
+  { id: 'projects', label: 'Proj.', fullName: 'Projects IDE', detail: 'Files, editor, terminal, Git, and checkpoints.', icon: projectsIcon, phase: 4 },
+  { id: 'models-api', label: 'Models', fullName: 'Model & API Hub', detail: 'Providers, keyring credentials, catalog, router, aliases.', icon: modelsIcon, phase: 2 },
+  { id: 'settings-system', label: 'System', fullName: 'System & Settings', detail: 'Tools, registry, security, diagnostics, updates, theme.', icon: settingsIcon, phase: 11 },
 ];
 
 interface Props {
@@ -60,11 +47,12 @@ const VIEW_MODES: { id: ViewMode; label: string }[] = [
 ];
 
 const PALETTE_COMMANDS: { label: string; target: NavSection }[] = [
+  { label: 'Open Personal Agent', target: 'agent' },
   { label: 'Open Project', target: 'projects' },
   { label: 'New Conference', target: 'conference' },
-  { label: 'Connect Provider', target: 'providers' },
+  { label: 'Connect Provider', target: 'models-api' },
   { label: 'Run Build', target: 'builder' },
-  { label: 'Open Settings', target: 'settings' },
+  { label: 'Open Settings', target: 'settings-system' },
 ];
 
 export function AppShell(props: Props): React.ReactElement {
@@ -98,7 +86,7 @@ export function AppShell(props: Props): React.ReactElement {
             title={`${item.fullName} — ${item.detail} (Phase ${item.phase})`}
             aria-label={item.fullName}
           >
-            <span className="gf-nav-glyph" style={{ fontSize: 18 }}>{item.glyph}</span>
+            <span className="gf-nav-glyph"><img src={item.icon} alt="" width={28} height={28} draggable={false} /></span>
             <span className="gf-nav-text">
               <span className="gf-nav-label">{item.fullName}</span>
               <span className="gf-nav-detail">{item.detail}</span>
@@ -110,6 +98,7 @@ export function AppShell(props: Props): React.ReactElement {
       <div className="gf-main">
         <header className="gf-header">
           <div className="gf-row">
+            <img src={appLogo} alt="Agent Guild Foundry" className="gf-logo" draggable={false} />
             <strong className="gf-gold-text">Guild Foundry AI</strong>
             <span className="gf-muted" style={{ fontSize: 12 }}>
               {activeItem?.fullName ?? ''}

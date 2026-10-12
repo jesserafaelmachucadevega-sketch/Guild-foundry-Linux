@@ -63,19 +63,19 @@ function defineTheme(): void {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: 'comment', foreground: '8f8a7d' },
-      { token: 'keyword', foreground: 'c9a227' },
-      { token: 'string', foreground: 'd2b48c' },
+      { token: 'comment', foreground: '8ca1c2' },
+      { token: 'keyword', foreground: '2e7de9' },
+      { token: 'string', foreground: '9db9e8' },
     ],
     colors: {
-      'editor.background': '#0a0a0a',
-      'editor.foreground': '#f2ede1',
-      'editor.lineHighlightBackground': '#161616',
-      'editorLineNumber.foreground': '#8f8a7d',
-      'editorLineNumber.activeForeground': '#c9a227',
-      'editorCursor.foreground': '#c9a227',
-      'editor.selectionBackground': '#3d3d3d',
-      'editor.inactiveSelectionBackground': '#2b2b2b',
+      'editor.background': '#060b16',
+      'editor.foreground': '#f4f7fd',
+      'editor.lineHighlightBackground': '#111d33',
+      'editorLineNumber.foreground': '#8ca1c2',
+      'editorLineNumber.activeForeground': '#2e7de9',
+      'editorCursor.foreground': '#2e7de9',
+      'editor.selectionBackground': '#31497e',
+      'editor.inactiveSelectionBackground': '#22345a',
       'diffEditor.insertedTextBackground': '#1d3a2410',
       'diffEditor.removedTextBackground': '#4a1d1610',
     },
@@ -320,7 +320,7 @@ export function CodeEditor({
     <div className="gf-projects-col" style={{ flex: 1 }}>
       <style>{`
         .gf-agent-line { background: rgba(201, 162, 39, 0.14); }
-        .gf-agent-glyph { background: #c9a227; width: 4px !important; margin-left: 3px; }
+        .gf-agent-glyph { background: #2e7de9; width: 4px !important; margin-left: 3px; }
       `}</style>
       <div className="gf-pane-header">
         <span>Editor</span>

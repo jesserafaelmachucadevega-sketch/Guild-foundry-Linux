@@ -4,189 +4,47 @@ import './a11y.css';
 import type { ViewMode } from './lib/types';
 import { AppShell, useToasts, type NavSection } from './components/AppShell';
 import { SettingsDrawer } from './components/SettingsDrawer';
+import { AgentHarness } from './components/agent/AgentHarness';
+import { BuilderHub } from './components/hubs/BuilderHub';
+import { ModelsApiHub } from './components/hubs/ModelsApiHub';
+import { SystemHub } from './components/hubs/SystemHub';
 import { ProjectsPanel } from './components/projects/ProjectsPanel';
-import { ProvidersPanel } from './components/providers/ProvidersPanel';
-import { ModelCatalog } from './components/models/ModelCatalog';
 import { ConferenceRoom } from './components/conference/ConferenceRoom';
-import BuilderStudio from './components/builder/BuilderStudio';
-import RunHistory from './components/builder/RunHistory';
-import { ToolPanel } from './components/tools/ToolPanel';
-import { McpPanel } from './components/mcp/McpPanel';
-import { ConnectionsPanel } from './components/connections/ConnectionsPanel';
-import { ScheduledPanel } from './components/scheduler/ScheduledPanel';
 import { SchedulerRunner } from './components/scheduler/SchedulerRunner';
-import { MemoryPanel } from './components/memory/MemoryPanel';
-import { KnowledgeBridge } from './components/memory/KnowledgeBridge';
-import { ResearchPanel } from './components/memory/ResearchPanel';
-import { ArtifactsTabs } from './components/artifacts/ArtifactsTabs';
-import { SecurityView } from './components/security/SecurityView';
-import { DiagnosticsPanel } from './components/diagnostics/DiagnosticsPanel';
-import { UpdaterPanel } from './components/diagnostics/UpdaterPanel';
 import { CrashRecovery } from './components/diagnostics/CrashRecovery';
 import { invoke, isDesktop, DesktopCapabilityRequired } from './lib/api';
 
-// All 12 build phases have landed. Every section below renders its real
-// implementation; nothing is mocked.
+// Six primary hubs. Former single-purpose views live as interior tabs inside
+// their hub; every section below renders its real implementation.
 
 const SECTION_PHASE: Record<NavSection, number> = {
-  home: 1,
+  agent: 15,
   builder: 5,
   conference: 3,
   projects: 4,
-  providers: 2,
-  models: 2,
-  tools: 6,
-  mcp: 7,
-  connections: 7,
-  scheduled: 14,
-  memory: 10,
-  artifacts: 8,
-  runs: 5,
-  security: 9,
-  diagnostics: 11,
-  updates: 11,
-  settings: 1,
+  'models-api': 2,
+  'settings-system': 11,
 };
 
 const SECTION_TITLE: Record<NavSection, string> = {
-  home: 'Home',
+  agent: 'Personal Agent',
   builder: 'App Builder Studio',
   conference: 'Conference Room',
-  projects: 'Projects',
-  providers: 'Providers',
-  models: 'Models',
-  tools: 'Tools',
-  mcp: 'MCP Servers',
-  connections: 'Connections',
-  scheduled: 'Scheduled',
-  memory: 'Memory',
-  artifacts: 'Artifacts',
-  runs: 'Runs',
-  security: 'Security',
-  diagnostics: 'Diagnostics',
-  updates: 'Updates',
-  settings: 'Settings',
+  projects: 'Projects IDE',
+  'models-api': 'Model & API Hub',
+  'settings-system': 'System & Settings',
 };
 
-function HomePanel({ onToast, onNavigate }: { onToast: (t: string) => void; onNavigate: (s: NavSection) => void }): React.ReactElement {
-  const [env, setEnv] = useState<Record<string, unknown> | null>(null);
-
-  useEffect(() => {
-    if (!isDesktop()) return;
-    void invoke<Record<string, unknown>>('detect_environment')
-      .then(setEnv)
-      .catch(() => undefined);
-  }, []);
-
-  return (
-    <div className="gf-workspace">
-      <div className="gf-pane" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
-        <div className="gf-pane-header">
-          <span>Home</span>
-        </div>
-        <p>
-          Guild Foundry AI — AI-native developer workstation and collaboration
-          environment.
-        </p>
-        <div className="gf-row" style={{ marginTop: 12, flexWrap: 'wrap' }}>
-          <button
-            className="gf-btn primary"
-            onClick={() => onNavigate('projects')}
-          >
-            New Project
-          </button>
-          <button
-            className="gf-btn"
-            onClick={() => onNavigate('conference')}
-          >
-            New Conference
-          </button>
-        </div>
-        <hr className="gf-divider" />
-        <span className="gf-label">Environment</span>
-        {!isDesktop() && (
-          <p className="gf-muted">
-            Browser preview mode. Native capabilities show "Desktop Capability
-            Required".
-          </p>
-        )}
-        {env ? (
-          <pre
-            style={{
-              background: 'var(--gf-panel)',
-              border: '1px solid var(--gf-border)',
-              padding: 12,
-              fontSize: 12,
-              overflowX: 'auto',
-            }}
-          >
-            {JSON.stringify(env, null, 2)}
-          </pre>
-        ) : (
-          isDesktop() && <p className="gf-muted">Detecting environment…</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MemoryTabs(): React.ReactElement {
-  const [tab, setTab] = useState<'memory' | 'bridge' | 'research'>('memory');
-  return (
-    <div className="gf-workspace">
-      <div className="gf-pane" style={{ flex: 1, minWidth: 0 }}>
-        <div className="gf-pane-header">
-          <span>Memory</span>
-          <span className="gf-view-switcher" role="tablist" aria-label="Memory views">
-            <button
-              role="tab"
-              aria-selected={tab === 'memory'}
-              className={tab === 'memory' ? 'active' : ''}
-              onClick={() => setTab('memory')}
-            >
-              Memory
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === 'bridge'}
-              className={tab === 'bridge' ? 'active' : ''}
-              onClick={() => setTab('bridge')}
-            >
-              Knowledge Bridge
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === 'research'}
-              className={tab === 'research' ? 'active' : ''}
-              onClick={() => setTab('research')}
-            >
-              Research
-            </button>
-          </span>
-        </div>
-        {tab === 'memory' && <MemoryPanel />}
-        {tab === 'bridge' && <KnowledgeBridge />}
-        {tab === 'research' && <ResearchPanel />}
-      </div>
-    </div>
-  );
-}
-
 export default function App(): React.ReactElement {
-  const [section, setSection] = useState<NavSection>('home');
+  const [section, setSection] = useState<NavSection>('agent');
   const [viewMode, setViewMode] = useState<ViewMode>('desktop');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [connectionState, setConnectionState] = useState('IDLE');
-  const [runsRefresh, setRunsRefresh] = useState(0);
-  // Light is the default theme (tans / warm greys / light browns, black text).
+  // Light is the default theme (white and blues on deep blue-black).
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const { toasts, pushToast } = useToasts();
 
   const openSection = (s: NavSection): void => {
-    if (s === 'settings') {
-      setSettingsOpen(true);
-      return;
-    }
     setSettingsOpen(false);
     setSection(s);
   };
@@ -226,7 +84,6 @@ export default function App(): React.ReactElement {
         onToast={pushToast}
         onDecide={(d) => {
           pushToast(`Recovery: ${d.action}`);
-          if (d.action === 'resume') setRunsRefresh((n) => n + 1);
         }}
       />
       {settingsOpen ? (
@@ -236,66 +93,30 @@ export default function App(): React.ReactElement {
             open={settingsOpen}
             onClose={() => setSettingsOpen(false)}
             onToast={pushToast}
-            theme={theme}
-            onTheme={setTheme}
+            onNavigate={(s) => {
+              setSettingsOpen(false);
+              openSection(s);
+            }}
           />
         </div>
-      ) : section === 'home' ? (
-        <HomePanel onToast={pushToast} onNavigate={openSection} />
+      ) : section === 'agent' ? (
+        <AgentHarness onToast={pushToast} onNavigate={openSection} />
       ) : section === 'builder' ? (
-        <BuilderStudio />
+        <BuilderHub onToast={pushToast} />
       ) : section === 'conference' ? (
         <ConferenceRoom onToast={pushToast} />
       ) : section === 'projects' ? (
         <ProjectsPanel onToast={pushToast} />
-      ) : section === 'providers' ? (
-        <ProvidersPanel onToast={pushToast} />
-      ) : section === 'models' ? (
-        <ModelCatalog onToast={pushToast} />
-      ) : section === 'tools' ? (
-        <ToolPanel onToast={pushToast} />
-      ) : section === 'mcp' ? (
-        <McpPanel onToast={pushToast} />
-      ) : section === 'connections' ? (
-        <ConnectionsPanel onToast={pushToast} />
-      ) : section === 'scheduled' ? (
-        <ScheduledPanel onToast={pushToast} />
-      ) : section === 'memory' ? (
-        <MemoryTabs />
-      ) : section === 'artifacts' ? (
-        <ArtifactsTabs onToast={pushToast} />
-      ) : section === 'runs' ? (
-        <div className="gf-workspace">
-          <div className="gf-pane" style={{ flex: 1, minWidth: 0 }}>
-            <div className="gf-pane-header">
-              <span>Runs</span>
-            </div>
-            <RunHistory
-              refreshKey={runsRefresh}
-              onSelect={() => setSection('builder')}
-            />
-          </div>
-        </div>
-      ) : section === 'security' ? (
-        <SecurityView />
-      ) : section === 'diagnostics' ? (
-        <div className="gf-workspace">
-          <div className="gf-pane" style={{ flex: 1, minWidth: 0 }}>
-            <div className="gf-pane-header">
-              <span>Diagnostics</span>
-            </div>
-            <DiagnosticsPanel onToast={pushToast} />
-          </div>
-        </div>
-      ) : section === 'updates' ? (
-        <div className="gf-workspace">
-          <div className="gf-pane" style={{ flex: 1, minWidth: 0 }}>
-            <div className="gf-pane-header">
-              <span>Updates</span>
-            </div>
-            <UpdaterPanel onToast={pushToast} />
-          </div>
-        </div>
+      ) : section === 'models-api' ? (
+        <ModelsApiHub onToast={pushToast} />
+      ) : section === 'settings-system' ? (
+        <SystemHub
+          onToast={pushToast}
+          onNavigate={openSection}
+          theme={theme}
+          onTheme={setTheme}
+          onEditPrompts={() => setSettingsOpen(true)}
+        />
       ) : (
         <div className="gf-workspace">
           <div className="gf-pane" style={{ flex: 1, padding: 16 }}>

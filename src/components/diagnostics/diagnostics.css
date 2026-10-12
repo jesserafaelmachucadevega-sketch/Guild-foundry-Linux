@@ -4,10 +4,12 @@
    no distribution or hardware names in the UI. */
 
 .gf-diag {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 12px;
+  padding: 12px 12px 48px;
   overflow-y: auto;
 }
 

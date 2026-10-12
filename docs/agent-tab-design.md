@@ -1,6 +1,10 @@
 # Agent Tab — Design Document
 
-**Status:** Design (not yet implemented)
+**Status:** Implemented 2026-10-12 as the Personal Agent Harness (`src/components/agent/AgentHarness.tsx`):
+chat + activity trace + approval/user-input gates + quick actions + inline media rendering
+(§4.5 contract) + `artifact.create` inline rendering (§4.6) + avatar activity states (§11) +
+suggested to-dos (§12) + voice mic/speech (§9) + Memory & Research tab. The tool-call
+adapter registry (§5) is deferred — the loop still speaks the fenced `tool_call` dialect only.
 **Date:** 2026-10-07
 **Author:** Akaia (for Jesse / Guild Foundry coder)
 

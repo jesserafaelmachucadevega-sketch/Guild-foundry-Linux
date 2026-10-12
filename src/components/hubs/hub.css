@@ -1,0 +1,62 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Hub shells: each primary hub is a pane with an inner tab bar; the tab
+   content area (.hub-fill) hosts existing panels unmodified. The overrides
+   below adapt panels that assumed top-level sizing to nested flex layout. */
+
+.hub-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hub-fill > .gf-workspace {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Panels that sized themselves to the viewport now fill the tab area. */
+.hub-fill > .bld-wrap {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+.hub-fill > .gf-conf {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+.hub-fill > .mcp-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  max-width: none;
+}
+.hub-fill > .gf-providers,
+.hub-fill > .gf-models,
+.hub-fill > .gf-diag,
+.hub-fill > .gf-panel,
+.hub-fill > .conn-pane {
+  min-height: 0;
+}
+
+.hub-nested-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+}
+.hub-nested-tabs button {
+  background: transparent;
+  border: 1px solid var(--gf-border);
+  color: var(--gf-muted);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.hub-nested-tabs button.active {
+  background: var(--gf-dark-grey);
+  color: var(--gf-gold);
+  border-color: var(--gf-gold);
+}
