@@ -10,15 +10,6 @@ export type ProviderKind =
   | 'google'
   | 'ollama';
 
-export interface ProviderConfig {
-  id: string;
-  name: string;
-  kind: ProviderKind;
-  baseUrl: string;
-  modelsPath: string; // e.g. "/v1/models"
-  apiKeyEnvLabel: string; // label shown in Settings, e.g. "API key"
-}
-
 export type ConnectionStatus =
   | { state: 'idle' }
   | { state: 'checking' }
