@@ -284,7 +284,7 @@ fn tool_registry() -> Vec<ToolDef> {
                     "options": { "type": "array", "items": { "type": "string" }, "description": "poll: 2+ options." },
                     "items": { "type": "array", "items": { "type": "object" }, "description": "checklist: [{label, checked}]." },
                     "min": { "type": "number", "description": "slider minimum." },
-                    "max": { "type": "number", "description": "slider maximum." },
+                    "max": { "type": "number", "description": "slider initial value." },
                     "value": { "type": "number", "description": "slider initial value." },
                     "body": { "type": "string", "description": "card / sticky text content." },
                     "color": { "type": "string", "description": "sticky / note background color, CSS hex." },
@@ -295,6 +295,54 @@ fn tool_registry() -> Vec<ToolDef> {
             risk: RiskLevel::Low,
             domain: "interaction".into(),
             ready: true,
+        },
+        ToolDef {
+            name: "web.tavily_search".into(),
+            description: "Web search via Tavily (fresh information on demand — how you stay current instead of guessing from weights). Returns an AI answer plus trimmed sources. Each call spends Tavily credits: keep queries deliberate. Requires a Tavily key (System & Settings → Tools & Registry → Connections)."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "query": { "type": "string", "description": "Search query." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 8, "description": "Sources to return (default 5)." }
+                }),
+                &["query"],
+            ),
+            risk: RiskLevel::Moderate, // spends search credits; permission gate applies
+            domain: "web".into(),
+            ready: true, // Phase 15 (crate::integrations)
+        },
+        ToolDef {
+            name: "web.exa_search".into(),
+            description: "Web + neural search via Exa (fresh information with page text excerpts). Returns trimmed sources. Each call spends Exa credits: keep queries deliberate. Requires an Exa key (System & Settings → Tools & Registry → Connections)."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "query": { "type": "string", "description": "Search query." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 8, "description": "Sources to return (default 5)." }
+                }),
+                &["query"],
+            ),
+            risk: RiskLevel::Moderate, // spends search credits; permission gate applies
+            domain: "web".into(),
+            ready: true, // Phase 15 (crate::integrations)
+        },
+        ToolDef {
+            name: "github.get_user".into(),
+            description: "Read the authenticated GitHub profile (login, name, public repos). Free read for identity checks before repo work. Requires a GitHub PAT (System & Settings → Tools & Registry → Connections)."
+                .into(),
+            schema: schema(serde_json::json!({}), &[]),
+            risk: RiskLevel::Low,
+            domain: "web".into(),
+            ready: true, // Phase 15 (crate::integrations)
+        },
+        ToolDef {
+            name: "hf.whoami".into(),
+            description: "Read the authenticated Hugging Face identity (name, plan). Free read for identity checks before model/dataset work. Requires a Hugging Face token (System & Settings → Tools & Registry → Connections)."
+                .into(),
+            schema: schema(serde_json::json!({}), &[]),
+            risk: RiskLevel::Low,
+            domain: "web".into(),
+            ready: true, // Phase 15 (crate::integrations)
         },
     ]
 }
@@ -972,6 +1020,18 @@ pub fn tool_execute(
             crate::avatar::set_avatar_from_path(&app, &path)
         }
         "artifact.create" => ad_create_artifact(&args).map(|a| serde_json::json!({ "artifact": a })),
+        "web.tavily_search" => {
+            let query = arg_str(&args, "query")?;
+            let max_results = args.get("max_results").and_then(|v| v.as_u64());
+            crate::integrations::tavily_search(&query, max_results)
+        }
+        "web.exa_search" => {
+            let query = arg_str(&args, "query")?;
+            let max_results = args.get("max_results").and_then(|v| v.as_u64());
+            crate::integrations::exa_search(&query, max_results)
+        }
+        "github.get_user" => crate::integrations::github_get_user(),
+        "hf.whoami" => crate::integrations::hf_whoami(),
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
     };
 

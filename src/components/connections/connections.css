@@ -59,6 +59,16 @@
   color: #4cc06e;
 }
 
+.conn-badge-err {
+  border-color: #a83226;
+  color: #e06c6c;
+}
+
+.conn-badge-warn {
+  border-color: #8a6d1c;
+  color: #e0b34c;
+}
+
 .conn-tagline {
   margin: 0 0 8px;
   line-height: 1.45;

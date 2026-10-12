@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '../../lib/api';
 import type { McpServerView } from '../mcp/types';
+import { ApiIntegrationCards, StatusBadge, type BadgeState, type IntegrationStatus } from './ApiIntegrationCards';
 import './connections.css';
 
 interface Props {
@@ -555,6 +556,7 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
   const [voice, setVoice] = useState(TTS_VOICES[0].id);
   const [ttsLang, setTtsLang] = useState('en');
   const [busy, setBusy] = useState(false);
+  const [falBadge, setFalBadge] = useState<BadgeState>({ state: 'unconfigured' });
 
   useEffect(() => {
     let live = true;
@@ -611,9 +613,38 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     try {
       await invoke('secret_delete', { key: FAL_KEYRING_KEY });
       setHasKey(false);
+      setFalBadge({ state: 'unconfigured' });
       onToast('Fal API key removed');
     } catch (e) {
       onToast(errText(e));
+    }
+  };
+
+  const testFal = async () => {
+    if (!hasKey) {
+      onToast('Save a Fal API key first, then test');
+      return;
+    }
+    setBusy(true);
+    setFalBadge({ state: 'testing' });
+    try {
+      // Probe only — the gateway check generates and bills nothing.
+      const report = await invoke<IntegrationStatus>('integration_handshake', { service: 'fal' });
+      setFalBadge(
+        report.ok
+          ? { state: 'ready', code: report.http_status ? `${report.http_status} OK` : 'Ready' }
+          : { state: 'error', code: report.raw_code, layman: report.layman, detail: report.detail },
+      );
+      onToast(
+        report.ok
+          ? `Fal AI: ${report.http_status ?? 200} OK — ${report.layman}`
+          : `Fal AI: ERROR [${report.raw_code}] — ${report.layman}`,
+      );
+    } catch (e) {
+      setFalBadge({ state: 'error', code: 'ERR', layman: 'Handshake failed', detail: errText(e) });
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -676,11 +707,16 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     <div className="conn-card">
       <div className="conn-card-head">
         <strong>Media generation</strong>
-        {hasKey ? (
-          <span className="conn-badge conn-badge-ok">Key saved</span>
-        ) : (
-          <span className="conn-badge">No key</span>
-        )}
+        <span className="gf-row" style={{ gap: 6 }}>
+          {hasKey ? (
+            <span className="conn-badge conn-badge-ok">Key saved</span>
+          ) : (
+            <span className="conn-badge">No key</span>
+          )}
+          {(falBadge.state === 'ready' || falBadge.state === 'error' || falBadge.state === 'testing') && (
+            <StatusBadge badge={falBadge} />
+          )}
+        </span>
       </div>
       <p className="conn-tagline">
         Any model — local or frontier — can generate images and video through one
@@ -689,9 +725,14 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
         renders it and the result appears in the conversation.
       </p>
       {hasKey ? (
-        <button className="gf-btn gf-btn-sm conn-danger" onClick={() => void removeKey()}>
-          Remove key
-        </button>
+        <div className="gf-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <button className="gf-btn gf-btn-sm" onClick={() => void testFal()} disabled={busy}>
+            {busy ? 'Working…' : 'Test handshake'}
+          </button>
+          <button className="gf-btn gf-btn-sm conn-danger" onClick={() => void removeKey()}>
+            Remove key
+          </button>
+        </div>
       ) : (
         <div className="conn-keyrow">
           <input
@@ -938,6 +979,8 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
           </div>
           <ImageGenCard onToast={onToast} />
         </div>
+
+        <ApiIntegrationCards onToast={onToast} />
 
         <h3 className="conn-section">Connect a service</h3>
         {CATEGORY_ORDER.map((cat) => (

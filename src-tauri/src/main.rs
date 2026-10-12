@@ -17,6 +17,7 @@ mod db;
 mod diagnostics;
 mod git;
 mod index;
+mod integrations;
 mod mcp;
 mod media;
 mod memory;
@@ -212,6 +213,8 @@ fn main() {
             tools::tool_list,
             tools::tool_handshake,
             tools::tool_execute,
+            // Phase 15 — external API integrations
+            integrations::integration_handshake,
             // Phase 7 — MCP gateway + permissions
             mcp::mcp_server_add,
             mcp::mcp_server_update,
