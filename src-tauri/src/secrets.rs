@@ -22,7 +22,20 @@ pub(crate) fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn keyring_entry(key: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new("guild-foundry-ai", key).map_err(|e| e.to_string())
+    keyring::Entry::new("guild-foundry-ai", key).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("No such secret service")
+            || msg.contains("not provided by any")
+            || msg.contains("org.freedesktop.secrets")
+        {
+            format!(
+                "Keyring unavailable: {}. Install gnome-keyring or kwallet and ensure a Secret Service daemon is running.",
+                msg
+            )
+        } else {
+            msg
+        }
+    })
 }
 
 fn ensure_index(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
