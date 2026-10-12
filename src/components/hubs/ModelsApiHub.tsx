@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Model & API Hub — providers (keyring credentials + handshake), the model
 // catalog + router, and model aliases in one hub with three inner tabs.
+// IPC contract: Tauri `provider_upsert` expects snake_case `base_url` /
+// `models_path` (see src-tauri/src/providers.rs). Never invoke it directly
+// with camelCase `baseUrl` / `modelsPath` — route through `upsertProvider`
+// from ../../lib/providers, which maps baseUrl -> base_url and
+// modelsPath -> models_path.
 
 import React, { useEffect, useState } from 'react';
 import { invoke, isDesktop } from '../../lib/api';

@@ -83,10 +83,30 @@ export const upsertProvider = (p: {
   id?: string;
   name: string;
   kind: ProviderKind;
-  base_url: string;
-  models_path: string;
+  base_url?: string;
+  /** camelCase alias — mapped to `base_url` for the Rust IPC contract. */
+  baseUrl?: string;
+  models_path?: string;
+  /** camelCase alias — mapped to `models_path` for the Rust IPC contract. */
+  modelsPath?: string;
   api_key?: string;
-}): Promise<ProviderSummary> => invoke<ProviderSummary>('provider_upsert', p);
+  /** camelCase alias — mapped to `api_key`. */
+  apiKey?: string;
+}): Promise<ProviderSummary> => {
+  // Tauri `provider_upsert` expects snake_case (see src-tauri/src/providers.rs).
+  // Accept camelCase aliases from callers and always invoke with snake_case.
+  const base_url = p.base_url ?? p.baseUrl ?? '';
+  const models_path = p.models_path ?? p.modelsPath ?? '/models';
+  const api_key = p.api_key ?? p.apiKey;
+  return invoke<ProviderSummary>('provider_upsert', {
+    id: p.id,
+    name: p.name,
+    kind: p.kind,
+    base_url,
+    models_path,
+    api_key,
+  });
+};
 
 export const deleteProvider = (providerId: string): Promise<void> =>
   invoke<void>('provider_delete', { provider_id: providerId });
