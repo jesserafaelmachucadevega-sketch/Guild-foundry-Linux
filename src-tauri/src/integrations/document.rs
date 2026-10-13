@@ -29,7 +29,7 @@ pub(crate) fn ext_of(name: &str) -> String {
         .unwrap_or_default()
 }
 
-fn cap_text(text: &str, cap: usize) -> (String, bool) {
+pub(crate) fn cap_text(text: &str, cap: usize) -> (String, bool) {
     if text.len() <= cap {
         return (text.to_string(), false);
     }

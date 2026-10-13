@@ -1,0 +1,387 @@
+// SPDX-License-Identifier: Apache-2.0
+// Native account cards — real email (IMAP/SMTP) and calendar (CalDAV)
+// accounts, not MCP servers. Host/user config lives in the settings store;
+// passwords live ONLY in the OS keychain.
+//
+// These accounts back the email.* and calendar.* agent tools. Google and
+// Microsoft calendar accounts need OAuth — connect their connectors under
+// "Connect a service" instead; this card is for CalDAV providers
+// (Nextcloud, Fastmail, Radicale, iCloud with an app password, and similar).
+
+import React, { useEffect, useState } from 'react';
+import { invoke } from '../../lib/api';
+
+export interface AccountTest {
+  ok: boolean;
+  layman: string;
+  detail: string;
+  latency_ms: number;
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function Badge({ test, busy }: { test: AccountTest | null; busy: boolean }): React.ReactElement {
+  if (busy) return <span className="conn-badge">Testing…</span>;
+  if (!test) return <span className="conn-badge">Not tested</span>;
+  if (test.ok) return <span className="conn-badge conn-badge-ok">Connected · {test.latency_ms} ms</span>;
+  return (
+    <span className="conn-badge" title={test.detail}>
+      {test.layman}
+    </span>
+  );
+}
+
+const labelStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 };
+
+interface EmailPreset {
+  id: string;
+  label: string;
+  imap_host: string;
+  imap_port: number;
+  smtp_host: string;
+  smtp_port: number;
+  security: 'tls' | 'starttls';
+  note: string;
+}
+
+const EMAIL_PRESETS: EmailPreset[] = [
+  {
+    id: 'gmail',
+    label: 'Gmail',
+    imap_host: 'imap.gmail.com',
+    imap_port: 993,
+    smtp_host: 'smtp.gmail.com',
+    smtp_port: 587,
+    security: 'tls',
+    note: 'Use a Google app password (requires 2-Step Verification): Google Account → Security → App passwords.',
+  },
+  {
+    id: 'outlook',
+    label: 'Outlook / Microsoft 365',
+    imap_host: 'outlook.office365.com',
+    imap_port: 993,
+    smtp_host: 'smtp.office365.com',
+    smtp_port: 587,
+    security: 'tls',
+    note: 'Microsoft is retiring basic auth on many accounts — if sign-in fails, use an app password or connect the Microsoft connector under "Connect a service".',
+  },
+  {
+    id: 'custom',
+    label: 'Custom IMAP/SMTP',
+    imap_host: '',
+    imap_port: 993,
+    smtp_host: '',
+    smtp_port: 587,
+    security: 'tls',
+    note: 'Any standard IMAP + SMTP account works. IMAP usually 993 (TLS); SMTP usually 587 (STARTTLS).',
+  },
+];
+
+interface EmailForm {
+  imap_host: string;
+  imap_port: number;
+  smtp_host: string;
+  smtp_port: number;
+  security: 'tls' | 'starttls';
+  user: string;
+  from_name: string;
+}
+
+function EmailCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [presetId, setPresetId] = useState('gmail');
+  const [form, setForm] = useState<EmailForm>({
+    imap_host: 'imap.gmail.com',
+    imap_port: 993,
+    smtp_host: 'smtp.gmail.com',
+    smtp_port: 587,
+    security: 'tls',
+    user: '',
+    from_name: '',
+  });
+  const [password, setPassword] = useState('');
+  const [hasPass, setHasPass] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState<AccountTest | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void invoke<Record<string, unknown> | null>('settings_get', { key: 'email.account' })
+      .then((v) => {
+        if (!live || !v || typeof v !== 'object') return;
+        setForm((f) => ({
+          imap_host: typeof v.imap_host === 'string' ? v.imap_host : f.imap_host,
+          imap_port: typeof v.imap_port === 'number' ? v.imap_port : f.imap_port,
+          smtp_host: typeof v.smtp_host === 'string' ? v.smtp_host : f.smtp_host,
+          smtp_port: typeof v.smtp_port === 'number' ? v.smtp_port : f.smtp_port,
+          security: v.security === 'starttls' ? 'starttls' : 'tls',
+          user: typeof v.user === 'string' ? v.user : f.user,
+          from_name: typeof v.from_name === 'string' ? v.from_name : f.from_name,
+        }));
+      })
+      .catch(() => {});
+    void invoke<string[]>('secret_list_keys')
+      .then((keys) => {
+        if (live) setHasPass(keys.includes('gfa-email:default'));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const preset = EMAIL_PRESETS.find((p) => p.id === presetId) ?? EMAIL_PRESETS[0];
+
+  const applyPreset = (id: string): void => {
+    const p = EMAIL_PRESETS.find((x) => x.id === id);
+    if (!p) return;
+    setPresetId(id);
+    setForm((f) => ({
+      ...f,
+      imap_host: p.imap_host || f.imap_host,
+      imap_port: p.imap_port,
+      smtp_host: p.smtp_host || f.smtp_host,
+      smtp_port: p.smtp_port,
+      security: p.security,
+    }));
+    setTest(null);
+  };
+
+  const save = async (): Promise<void> => {
+    if (!form.user.trim()) {
+      onToast('Enter the email username first');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('settings_set', {
+        key: 'email.account',
+        value: { label: preset.label, ...form },
+      });
+      if (password.trim()) {
+        await invoke('secret_set', { key: 'gfa-email:default', value: password.trim() });
+        setHasPass(true);
+        setPassword('');
+      }
+      setTest(null);
+      onToast(hasPass || password.trim() ? 'Email account saved' : 'Email account saved — now add the app password');
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testConn = async (): Promise<void> => {
+    setBusy(true);
+    setTest(null);
+    try {
+      const r = await invoke<AccountTest>('email_test_connection');
+      setTest(r);
+      onToast(r.ok ? `Email: ${r.detail}` : `Email: ${r.detail}`);
+    } catch (e) {
+      setTest({ ok: false, layman: 'Test failed', detail: errText(e), latency_ms: 0 });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (): Promise<void> => {
+    if (!window.confirm('Remove the saved email account? The email tools will stop working.')) return;
+    try {
+      await invoke('secret_delete', { key: 'gfa-email:default' }).catch(() => {});
+      await invoke('settings_set', { key: 'email.account', value: null });
+      setHasPass(false);
+      setTest(null);
+      onToast('Email account removed');
+    } catch (e) {
+      onToast(errText(e));
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Email (IMAP/SMTP)</strong>
+        <Badge test={test} busy={busy} />
+      </div>
+      <p className="conn-tagline">The agent reads, lists, and sends mail from your real account — email.list, email.read, email.send.</p>
+      <select className="gf-input" value={presetId} onChange={(e) => applyPreset(e.target.value)}>
+        {EMAIL_PRESETS.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+      <p className="conn-note">{preset.note}</p>
+      <label className="gf-label" style={labelStyle}>
+        IMAP host
+        <input className="gf-input" value={form.imap_host} onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))} placeholder="imap.example.com" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        SMTP host
+        <input className="gf-input" value={form.smtp_host} onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.example.com" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        Username (full email address)
+        <input className="gf-input" value={form.user} onChange={(e) => setForm((f) => ({ ...f, user: e.target.value }))} placeholder="you@example.com" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        From name (optional)
+        <input className="gf-input" value={form.from_name} onChange={(e) => setForm((f) => ({ ...f, from_name: e.target.value }))} placeholder="Jesse" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        App password {hasPass ? '(saved — type to replace)' : ''}
+        <input className="gf-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={hasPass ? '••••••••' : 'app password'} />
+      </label>
+      <div className="gf-row" style={{ marginTop: 8 }}>
+        <button className="gf-btn gf-btn-sm" onClick={() => void save()} disabled={busy}>
+          Save
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void testConn()} disabled={busy || !hasPass} title={hasPass ? 'Verify sign-in now' : 'Save the app password first'}>
+          Test
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void remove()} disabled={busy}>
+          Remove
+        </button>
+      </div>
+      <p className="conn-note">Passwords go to your OS keychain — the agent sees tool names, never credentials.</p>
+    </div>
+  );
+}
+
+function CalendarCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [baseUrl, setBaseUrl] = useState('');
+  const [user, setUser] = useState('');
+  const [label, setLabel] = useState('');
+  const [password, setPassword] = useState('');
+  const [hasPass, setHasPass] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState<AccountTest | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void invoke<Record<string, unknown> | null>('settings_get', { key: 'calendar.account' })
+      .then((v) => {
+        if (!live || !v || typeof v !== 'object') return;
+        if (typeof v.base_url === 'string') setBaseUrl(v.base_url);
+        if (typeof v.user === 'string') setUser(v.user);
+        if (typeof v.label === 'string') setLabel(v.label);
+      })
+      .catch(() => {});
+    void invoke<string[]>('secret_list_keys')
+      .then((keys) => {
+        if (live) setHasPass(keys.includes('gfa-calendar:default'));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const save = async (): Promise<void> => {
+    if (!baseUrl.trim() || !user.trim()) {
+      onToast('CalDAV URL and username are required');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('settings_set', {
+        key: 'calendar.account',
+        value: { label: label.trim() || 'CalDAV', base_url: baseUrl.trim(), user: user.trim() },
+      });
+      if (password.trim()) {
+        await invoke('secret_set', { key: 'gfa-calendar:default', value: password.trim() });
+        setHasPass(true);
+        setPassword('');
+      }
+      setTest(null);
+      onToast(hasPass || password.trim() ? 'Calendar account saved' : 'Calendar account saved — now add the password');
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testConn = async (): Promise<void> => {
+    setBusy(true);
+    setTest(null);
+    try {
+      const r = await invoke<AccountTest>('calendar_test_connection');
+      setTest(r);
+      onToast(r.ok ? `Calendar: ${r.detail}` : `Calendar: ${r.detail}`);
+    } catch (e) {
+      setTest({ ok: false, layman: 'Test failed', detail: errText(e), latency_ms: 0 });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (): Promise<void> => {
+    if (!window.confirm('Remove the saved calendar? The calendar tools will stop working.')) return;
+    try {
+      await invoke('secret_delete', { key: 'gfa-calendar:default' }).catch(() => {});
+      await invoke('settings_set', { key: 'calendar.account', value: null });
+      setHasPass(false);
+      setTest(null);
+      onToast('Calendar account removed');
+    } catch (e) {
+      onToast(errText(e));
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Calendar (CalDAV)</strong>
+        <Badge test={test} busy={busy} />
+      </div>
+      <p className="conn-tagline">The agent lists, creates, updates, and deletes events on your real calendar.</p>
+      <p className="conn-note">
+        CalDAV providers only (Nextcloud, Fastmail, Radicale, iCloud with an app password, and similar). Google and Outlook
+        calendars require OAuth — connect their connectors under "Connect a service" and the agent calls those tools instead.
+      </p>
+      <label className="gf-label" style={labelStyle}>
+        Display name (optional)
+        <input className="gf-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Personal" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        CalDAV collection URL
+        <input className="gf-input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://cloud.example.com/remote.php/dav/calendars/you/personal/" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        Username
+        <input className="gf-input" value={user} onChange={(e) => setUser(e.target.value)} placeholder="you@example.com" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        App password {hasPass ? '(saved — type to replace)' : ''}
+        <input className="gf-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={hasPass ? '••••••••' : 'app password'} />
+      </label>
+      <div className="gf-row" style={{ marginTop: 8 }}>
+        <button className="gf-btn gf-btn-sm" onClick={() => void save()} disabled={busy}>
+          Save
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void testConn()} disabled={busy || !hasPass} title={hasPass ? 'Verify sign-in now' : 'Save the password first'}>
+          Test
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void remove()} disabled={busy}>
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function AccountCards({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  return (
+    <>
+      <h3 className="conn-section">Accounts (native)</h3>
+      <div className="conn-grid">
+        <EmailCard onToast={onToast} />
+        <CalendarCard onToast={onToast} />
+      </div>
+    </>
+  );
+}

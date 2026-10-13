@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '../../lib/api';
 import type { McpServerView } from '../mcp/types';
 import { ApiIntegrationCards, StatusBadge, type BadgeState, type IntegrationStatus } from './ApiIntegrationCards';
+import { AccountCards } from './AccountCards';
 import './connections.css';
 
 interface Props {
@@ -981,6 +982,8 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
         </div>
 
         <ApiIntegrationCards onToast={onToast} />
+
+        <AccountCards onToast={onToast} />
 
         <h3 className="conn-section">Connect a service</h3>
         {CATEGORY_ORDER.map((cat) => (

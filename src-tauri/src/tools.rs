@@ -432,7 +432,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "email.read".into(),
-            description: "Read a specific email by ID. Returns full message including headers, body (text/html), and attachments info."
+            description: "Read a specific email by uid (from email.list). Returns headers, body text (HTML converted to text when needed), and the attachment count."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -470,7 +470,7 @@ fn tool_registry() -> Vec<ToolDef> {
         // Calendar tools
         ToolDef {
             name: "calendar.list_events".into(),
-            description: "List calendar events from a connected calendar (Google, Outlook, CalDAV). Supports date range and calendar filters."
+            description: "List events from the connected CalDAV calendar in a date range. Google/Outlook calendar accounts: use their MCP connector tools via mcp.call_tool instead."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -488,7 +488,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "calendar.create_event".into(),
-            description: "Create a calendar event. Supports recurring events, attendees, reminders, video conferencing links."
+            description: "Create a CalDAV calendar event. RFC3339 start/end times; attendees and an RRULE recurrence are supported."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -510,7 +510,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "calendar.update_event".into(),
-            description: "Update an existing calendar event."
+            description: "Update an existing CalDAV event (use the uid or href from calendar.list_events)."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -530,7 +530,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "calendar.delete_event".into(),
-            description: "Delete a calendar event."
+            description: "Delete a CalDAV event (use the uid or href from calendar.list_events)."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -835,6 +835,25 @@ fn arg_str(args: &HashMap<String, serde_json::Value>, key: &str) -> Result<Strin
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| format!("missing or invalid string argument: {}", key))
+}
+
+fn arg_uid(args: &HashMap<String, serde_json::Value>, key: &str) -> Result<u32, String> {
+    let v = args.get(key).cloned().unwrap_or(serde_json::Value::Null);
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse::<u64>().ok()))
+        .map(|n| n as u32)
+        .ok_or_else(|| format!("missing or invalid numeric argument: {}", key))
+}
+
+fn str_vec(args: &HashMap<String, serde_json::Value>, key: &str) -> Vec<String> {
+    args.get(key)
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Validate an `artifact.create` payload and return the normalized artifact.
@@ -1400,14 +1419,66 @@ pub fn tool_execute(
         "cloud.drive_write" => Err("cloud.drive_write: not implemented - requires cloud drive integration module".to_string()),
         "cloud.drive_search" => Err("cloud.drive_search: not implemented - requires cloud drive integration module".to_string()),
         // Email tools
-        "email.list" => Err("email.list: not implemented - requires email integration module".to_string()),
-        "email.read" => Err("email.read: not implemented - requires email integration module".to_string()),
-        "email.send" => Err("email.send: not implemented - requires email integration module".to_string()),
+        "email.list" => {
+            let folder = args.get("folder").and_then(|v| v.as_str());
+            let max_results = args.get("max_results").and_then(|v| v.as_u64());
+            let unread_only = args.get("unread_only").and_then(|v| v.as_bool()).unwrap_or(false);
+            let query = args.get("query").and_then(|v| v.as_str());
+            crate::integrations::email::list(&app, folder, max_results, unread_only, query)
+        }
+        "email.read" => {
+            let uid = arg_uid(&args, "message_id")?;
+            let folder = args.get("folder").and_then(|v| v.as_str());
+            crate::integrations::email::read(&app, uid, folder)
+        }
+        "email.send" => {
+            let to = str_vec(&args, "to");
+            let cc = str_vec(&args, "cc");
+            let bcc = str_vec(&args, "bcc");
+            let subject = arg_str(&args, "subject")?;
+            let body_text = args.get("body_text").and_then(|v| v.as_str());
+            let body_html = args.get("body_html").and_then(|v| v.as_str());
+            let attachments = args
+                .get("attachments")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if to.is_empty() {
+                return Err("email.send requires at least one recipient in 'to'".to_string());
+            }
+            crate::integrations::email::send(&app, to, cc, bcc, &subject, body_text, body_html, attachments)
+        }
         // Calendar tools
-        "calendar.list_events" => Err("calendar.list_events: not implemented - requires calendar integration module".to_string()),
-        "calendar.create_event" => Err("calendar.create_event: not implemented - requires calendar integration module".to_string()),
-        "calendar.update_event" => Err("calendar.update_event: not implemented - requires calendar integration module".to_string()),
-        "calendar.delete_event" => Err("calendar.delete_event: not implemented - requires calendar integration module".to_string()),
+        "calendar.list_events" => {
+            let time_min = args.get("time_min").and_then(|v| v.as_str());
+            let time_max = args.get("time_max").and_then(|v| v.as_str());
+            let max_results = args.get("max_results").and_then(|v| v.as_u64());
+            crate::integrations::calendar::list_events(&app, time_min, time_max, max_results)
+        }
+        "calendar.create_event" => {
+            let summary = arg_str(&args, "summary")?;
+            let start_time = arg_str(&args, "start_time")?;
+            let end_time = arg_str(&args, "end_time")?;
+            let description = args.get("description").and_then(|v| v.as_str());
+            let location = args.get("location").and_then(|v| v.as_str());
+            let attendees = str_vec(&args, "attendees");
+            let recurrence = args.get("recurrence").and_then(|v| v.as_str());
+            crate::integrations::calendar::create_event(
+                &app, &summary, &start_time, &end_time, description, location, attendees, recurrence,
+            )
+        }
+        "calendar.update_event" => {
+            let event_id = arg_str(&args, "event_id")?;
+            let summary = args.get("summary").and_then(|v| v.as_str());
+            let description = args.get("description").and_then(|v| v.as_str());
+            let start_time = args.get("start_time").and_then(|v| v.as_str());
+            let end_time = args.get("end_time").and_then(|v| v.as_str());
+            crate::integrations::calendar::update_event(&app, &event_id, summary, description, start_time, end_time)
+        }
+        "calendar.delete_event" => {
+            let event_id = arg_str(&args, "event_id")?;
+            crate::integrations::calendar::delete_event(&app, &event_id)
+        }
         // Document tools
         "document.convert" => {
             let input = arg_str(&args, "input_path")?;

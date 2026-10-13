@@ -18,13 +18,25 @@
 // Keyring convention: `gfa-integration:<service>` — except Fal, which reuses
 // the existing media key (`gfa-media-fal-key`, see `crate::media`).
 
+pub mod calendar;
 pub mod document;
+pub mod email;
 pub mod web;
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::Serialize;
+
+/// Shared result shape for the Connections "Test" buttons of the native
+/// account integrations (email, calendar, phone).
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountTest {
+    pub ok: bool,
+    pub layman: String,
+    pub detail: String,
+    pub latency_ms: u64,
+}
 
 pub const KEY_PREFIX: &str = "gfa-integration:";
 
