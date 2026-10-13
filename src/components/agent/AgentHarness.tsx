@@ -88,6 +88,9 @@ interface ThreadMsg {
   ts: number;
   /** Replies to this message id — the quote is appended to the new user input. */
   replyTo?: string;
+  /** Uploaded attachment: original file name + extracted text (documents). */
+  attachName?: string;
+  attachText?: string;
   /** Emoji reactions on this message. */
   reactions?: Record<string, number>;
 }
@@ -543,14 +546,42 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
     [running, desktop, providerId, modelId, sessionId, handleEvent, onToast, pushTrace],
   );
 
+  /** Attachment text from the pending batch (after the last assistant turn). */
+  const pendingAttachments = useCallback((): string => {
+    const parts: string[] = [];
+    let budget = 150_000;
+    for (let i = thread.length - 1; i >= 0; i -= 1) {
+      const m = thread[i];
+      if (m.role === 'assistant') break;
+      if (m.attachText && budget > 0) {
+        const head = `[Attached document: ${m.attachName ?? 'file'}]\n`;
+        const body =
+          m.attachText.length > budget
+            ? `${m.attachText.slice(0, budget)}\n(truncated to fit context)`
+            : m.attachText;
+        parts.unshift(`${head}${body}`);
+        budget -= body.length;
+      }
+    }
+    return parts.join('\n\n');
+  }, [thread]);
+
+  const composeOutgoing = useCallback(
+    (text: string): string => {
+      const att = pendingAttachments();
+      return att ? `${text}\n\n${att}` : text;
+    },
+    [pendingAttachments],
+  );
+
   const send = useCallback(
     (text: string) => {
       const t = text.trim();
       if (!t || running || pendingApproval || pendingQuestion) return;
       setInput('');
-      startLoop(t);
+      startLoop(composeOutgoing(t));
     },
-    [running, pendingApproval, pendingQuestion, startLoop],
+    [running, pendingApproval, pendingQuestion, startLoop, composeOutgoing],
   );
 
   const sendWithReply = useCallback(
@@ -560,52 +591,102 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
       setInput('');
       const prefix = replyTo ? `↳ Re: ${replyTo.text.slice(0, 200)}\n\n` : '';
       setReplyTo(null);
-      startLoop(`${prefix}${t}`);
+      startLoop(composeOutgoing(`${prefix}${t}`));
     },
-    [running, replyTo, startLoop],
+    [running, replyTo, startLoop, composeOutgoing],
   );
+
+  const readFileBase64 = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`could not read ${file.name}`));
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        const comma = result.indexOf(',');
+        if (comma < 0) {
+          reject(new Error(`could not read ${file.name}`));
+          return;
+        }
+        resolve(result.slice(comma + 1));
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const isImageFile = (file: File): boolean =>
+    file.type.startsWith('image/') ||
+    ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(
+      (file.name.split('.').pop() ?? '').toLowerCase(),
+    );
 
   const handleFileUpload = useCallback(
     async (files: FileList | null, icon: string) => {
       if (!files || files.length === 0) return;
       const toProcess = Array.from(files).slice(0, 20);
       setShowDocUpload(false);
+      let attached = 0;
 
       for (const file of toProcess) {
-        const preview = await file.text();
-        const name = file.name;
-        setThread((prev) => [
-          ...prev,
-          {
-            id: newId('attach'),
-            role: 'user',
-            text: `📎 Attached ${icon}: ${name} (${file.type || 'unknown'})`,
-            media: [],
-            artifacts: [],
-            ts: Date.now(),
-          },
-        ]);
-
-        if (file.type.startsWith('image/') || ['jpg','jpeg','png','gif','webp'].includes(file.type)) {
-          const url = URL.createObjectURL(file);
-          setThread((prev) => {
-            const last = prev[prev.length - 1];
-            if (!last) return prev;
-            last.media.push({ kind: 'image', path: url, url });
-            return [...prev.slice(0, -1), last];
-          });
-        } else if (file.size < 100_000) {
-          setDocPreview({ name, text: preview });
-          setShowPreview(true);
-        } else {
-          setDocPreview({ name, text: `(File too large for inline preview: ${file.size} bytes)` });
-          setShowPreview(true);
+        if (file.size > 25 * 1024 * 1024) {
+          onToast(`${file.name} is too large (25 MB limit)`);
+          continue;
+        }
+        const id = newId('attach');
+        try {
+          const b64 = await readFileBase64(file);
+          if (isImageFile(file)) {
+            const saved = await invoke<{ path: string }>('upload_save_b64', {
+              name: file.name,
+              data_b64: b64,
+            });
+            setThread((prev) => [
+              ...prev,
+              {
+                id,
+                role: 'user',
+                text: `📎 Attached ${icon}: ${file.name}`,
+                media: [{ kind: 'image', path: saved.path }],
+                artifacts: [],
+                ts: Date.now(),
+              },
+            ]);
+          } else {
+            const extracted = await invoke<{ chars: number; truncated: boolean; text: string }>(
+              'document_extract_upload',
+              { name: file.name, data_b64: b64 },
+            );
+            const text = (extracted.text ?? '').trim();
+            setThread((prev) => [
+              ...prev,
+              {
+                id,
+                role: 'user',
+                text: text
+                  ? `📎 Attached ${icon}: ${file.name} — ${extracted.chars.toLocaleString()} chars read${extracted.truncated ? ' (truncated)' : ''}`
+                  : `📎 Attached ${icon}: ${file.name} — no extractable text`,
+                media: [],
+                artifacts: [],
+                ts: Date.now(),
+                attachName: file.name,
+                attachText: text || undefined,
+              },
+            ]);
+            if (text && text.length < 20_000) {
+              setDocPreview({ name: file.name, text });
+              setShowPreview(true);
+            }
+          }
+          attached += 1;
+        } catch (err) {
+          onToast(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
 
-      onToast(`${toProcess.length} file(s) attached`);
+      if (attached > 0) {
+        onToast(`${attached} file(s) attached — their text is sent with your next message`);
+      }
     },
-    [onToast],
+    [onToast, readFileBase64],
   );
 
   const resumeLoop = useCallback(

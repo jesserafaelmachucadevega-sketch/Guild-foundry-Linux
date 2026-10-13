@@ -215,6 +215,8 @@ fn main() {
             tools::tool_execute,
             // Phase 15 — external API integrations
             integrations::integration_handshake,
+            integrations::document::document_extract_upload,
+            integrations::document::upload_save_b64,
             // Phase 7 — MCP gateway + permissions
             mcp::mcp_server_add,
             mcp::mcp_server_update,

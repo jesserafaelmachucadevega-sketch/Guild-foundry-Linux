@@ -548,7 +548,7 @@ fn tool_registry() -> Vec<ToolDef> {
         // Document processing tools
         ToolDef {
             name: "document.convert".into(),
-            description: "Convert a document between formats (PDF, DOCX, MD, HTML, TXT, RTF, ODT). Uses local LibreOffice/pandoc when available."
+            description: "Convert a document between formats. Text/markdown/HTML targets are converted natively; office and PDF targets use pandoc or LibreOffice when installed (their absence is reported honestly)."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -564,7 +564,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "document.extract_text".into(),
-            description: "Extract plain text from any document (PDF, DOCX, PPTX, XLSX, images via OCR). Returns text content."
+            description: "Extract plain text from a document (PDF, DOCX, PPTX, XLSX/XLS/ODS, ODT/ODP, RTF, HTML, CSV, and text/code files). Images require ocr=true (Tesseract). Returns text content."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -595,7 +595,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "document.ocr".into(),
-            description: "Perform OCR on an image or scanned PDF using local Tesseract. Returns extracted text with confidence."
+            description: "Perform OCR on an image or scanned PDF using the system Tesseract engine (must be installed; PDFs also need Poppler). Returns extracted text."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -611,13 +611,12 @@ fn tool_registry() -> Vec<ToolDef> {
         // Web browsing / scraping
         ToolDef {
             name: "web.fetch".into(),
-            description: "Fetch a web page and return cleaned content (HTML, markdown, or text). Respects robots.txt, handles JS-rendered pages via headless browser."
+            description: "Fetch a web page over HTTP and return readable content (cleaned text, light markdown, or raw HTML; 2 MB cap). Static pages only — for JavaScript-rendered sites connect a browser-automation MCP server and use mcp.call_tool."
                 .into(),
             schema: schema(
                 serde_json::json!({
-                    "url": { "type": "string", "description": "URL to fetch." },
-                    "format": { "type": "string", "description": "Output format: markdown, text, html (default markdown)." },
-                    "wait_for": { "type": "string", "description": "CSS selector to wait for (JS rendering)." },
+                    "url": { "type": "string", "description": "URL to fetch (http/https)." },
+                    "format": { "type": "string", "description": "Output format: text (default), markdown, or html." },
                     "timeout_secs": { "type": "integer", "minimum": 5, "maximum": 120, "description": "Timeout in seconds (default 30)." }
                 }),
                 &["url"],
@@ -1015,6 +1014,54 @@ pub fn tool_list() -> Vec<ToolDef> {
     tool_registry()
 }
 
+// ---------------------------------------------------------------------------
+// Configuration awareness: some tools exist but need a user connection first
+// (email account, calendar account, cloud-drive service, phone provider).
+// ---------------------------------------------------------------------------
+
+fn setting_present(app: &tauri::AppHandle, key: &str) -> bool {
+    matches!(
+        crate::settings::settings_get(app.clone(), key.to_string()),
+        Ok(Some(v)) if !v.is_null()
+    )
+}
+
+fn cloud_service_connected(app: &tauri::AppHandle) -> bool {
+    let Ok(conn) = crate::mcp::open_db(app) else {
+        return false;
+    };
+    let names: Vec<String> = {
+        let Ok(mut stmt) = conn.prepare("SELECT name FROM mcp_servers WHERE enabled = 1") else {
+            return false;
+        };
+        let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) else {
+            return false;
+        };
+        rows.flatten().collect()
+    };
+    names.iter().any(|n| {
+        let l = n.to_lowercase();
+        l.contains("drive") || l.contains("dropbox") || l.contains("onedrive")
+    })
+}
+
+/// Human setup hint when the tool exists but is not configured yet.
+fn setup_hint(app: &tauri::AppHandle, tool: &str) -> Option<&'static str> {
+    if tool.starts_with("email.") && !setting_present(app, "email.account") {
+        return Some("connect an email account under System & Settings → Tools & Registry → Connections");
+    }
+    if tool.starts_with("calendar.") && !setting_present(app, "calendar.account") {
+        return Some("connect a calendar account under Connections");
+    }
+    if tool.starts_with("phone.") && !setting_present(app, "phone.twilio") {
+        return Some("add your phone provider credentials under Connections");
+    }
+    if tool.starts_with("cloud.") && !cloud_service_connected(app) {
+        return Some("connect a cloud-drive service under Connections");
+    }
+    None
+}
+
 /// Per-session capability manifest + handshake system prompt (spec section 38).
 #[derive(Debug, Clone, Serialize)]
 pub struct Handshake {
@@ -1029,6 +1076,8 @@ pub struct CapabilityManifest {
     pub unavailable: Vec<String>,
     pub requires_approval: Vec<String>,
     pub restricted: Vec<String>,
+    /// Exists, but the user must connect a service before it can run.
+    pub needs_setup: Vec<String>,
 }
 
 /// Build the per-session capability manifest for `session_id`:
@@ -1043,6 +1092,10 @@ pub fn tool_handshake(app: tauri::AppHandle, session_id: String) -> Result<Hands
     for def in tool_registry() {
         if !def.ready {
             manifest.unavailable.push(def.name.clone());
+            continue;
+        }
+        if setup_hint(&app, &def.name).is_some() {
+            manifest.needs_setup.push(def.name.clone());
             continue;
         }
         match perm_check(&app, &agent_id, &def.name) {
@@ -1074,8 +1127,9 @@ fn handshake_prompt(manifest: &CapabilityManifest) -> String {
     format!(
         "TOOL CAPABILITY MANIFEST (this session)\n\
          AVAILABLE: {available}\n\
-         UNAVAILABLE: {unavailable}\n\
          REQUIRES APPROVAL: {requires_approval}\n\
+         NEEDS SETUP (registered but the user must connect a service before these can run — when a task needs one, tell the user exactly where to connect it instead of claiming you cannot do it): {needs_setup}\n\
+         UNAVAILABLE: {unavailable}\n\
          RESTRICTED: {restricted}\n\n\
          To use a tool, emit a fenced block exactly like this:\n\
          ```tool_call\n\
@@ -1100,6 +1154,7 @@ fn handshake_prompt(manifest: &CapabilityManifest) -> String {
         unavailable = list(&manifest.unavailable),
         requires_approval = list(&manifest.requires_approval),
         restricted = list(&manifest.restricted),
+        needs_setup = list(&manifest.needs_setup),
     )
 }
 
@@ -1354,12 +1409,35 @@ pub fn tool_execute(
         "calendar.update_event" => Err("calendar.update_event: not implemented - requires calendar integration module".to_string()),
         "calendar.delete_event" => Err("calendar.delete_event: not implemented - requires calendar integration module".to_string()),
         // Document tools
-        "document.convert" => Err("document.convert: not implemented - requires document processing module".to_string()),
-        "document.extract_text" => Err("document.extract_text: not implemented - requires document processing module".to_string()),
-        "document.compare" => Err("document.compare: not implemented - requires document processing module".to_string()),
-        "document.ocr" => Err("document.ocr: not implemented - requires OCR module".to_string()),
+        "document.convert" => {
+            let input = arg_str(&args, "input_path")?;
+            let output_format = arg_str(&args, "output_format")?;
+            let output_path = args.get("output_path").and_then(|v| v.as_str());
+            crate::integrations::document::convert(&input, &output_format, output_path)
+        }
+        "document.extract_text" => {
+            let file_path = arg_str(&args, "file_path")?;
+            let ocr = args.get("ocr").and_then(|v| v.as_bool());
+            crate::integrations::document::extract_text(&file_path, ocr)
+        }
+        "document.compare" => {
+            let old_path = arg_str(&args, "old_path")?;
+            let new_path = arg_str(&args, "new_path")?;
+            let format = args.get("format").and_then(|v| v.as_str());
+            crate::integrations::document::compare(&old_path, &new_path, format)
+        }
+        "document.ocr" => {
+            let file_path = arg_str(&args, "file_path")?;
+            let language = args.get("language").and_then(|v| v.as_str());
+            crate::integrations::document::ocr(&file_path, language)
+        }
         // Web fetch
-        "web.fetch" => Err("web.fetch: not implemented - requires web scraping module".to_string()),
+        "web.fetch" => {
+            let url = arg_str(&args, "url")?;
+            let format = args.get("format").and_then(|v| v.as_str());
+            let timeout_secs = args.get("timeout_secs").and_then(|v| v.as_u64());
+            crate::integrations::web::fetch(&url, format, timeout_secs)
+        }
         // MCP generic tool call
         "mcp.call_tool" => {
             let server_id = arg_str(&args, "server_id")?;

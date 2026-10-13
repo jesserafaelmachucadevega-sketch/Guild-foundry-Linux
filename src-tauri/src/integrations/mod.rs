@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// Phase 15 — External API integrations (Tavily, Exa, Context7, GitHub,
-// Hugging Face, Fal AI).
+// Integrations — external services and file formats the agent can reach.
 //
-// Two responsibilities:
+// Submodules:
+//   web.rs      — web.fetch (HTTP fetch + readable text/markdown extraction)
+//   document.rs — document.extract_text/compare/convert/ocr + upload intake
+//
+// This module also owns:
 //   1. `integration_handshake`: live key check against each service's real
 //      endpoint, returning HTTP status + plain-language verdict for the
 //      Connections status badges. Keys never travel here in logs; the
@@ -14,6 +17,9 @@
 //
 // Keyring convention: `gfa-integration:<service>` — except Fal, which reuses
 // the existing media key (`gfa-media-fal-key`, see `crate::media`).
+
+pub mod document;
+pub mod web;
 
 use std::sync::OnceLock;
 use std::time::Duration;
