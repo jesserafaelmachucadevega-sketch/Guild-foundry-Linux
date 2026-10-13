@@ -11,6 +11,8 @@ interface Props {
   onEmojiReaction?: (messageId: string, emoji: string) => void;
   reactions?: Record<string, Record<string, number>>;
   onArtifactSubmit?: (message: ChatMessage, artifact: Artifact, values: Record<string, unknown>) => void;
+  /** Assistant bubble color: blue for cloud models, green for local ones. */
+  assistantVariant?: 'cloud' | 'local';
 }
 
 const EMOJI_REACTIONS = ['😊','😂','❓','❗','🤯','😛'];
@@ -26,7 +28,7 @@ function renderText(content: string): React.ReactNode {
   });
 }
 
-export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReaction, reactions, onArtifactSubmit }: Props): React.ReactElement {
+export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReaction, reactions, onArtifactSubmit, assistantVariant }: Props): React.ReactElement {
   const [showEmojis, setShowEmojis] = useState(false);
   const isUser = message.role === 'user';
 
@@ -54,8 +56,11 @@ export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReactio
 
   const msgReactions = reactions?.[message.id];
 
+  const roleClass = isUser
+    ? 'gf-bubble-user'
+    : `gf-bubble-assistant gf-bubble-assistant--${assistantVariant ?? 'cloud'}`;
   return (
-    <div className={`gf-bubble gf-bubble-${isUser ? 'user' : 'assistant'}`}>
+    <div className={`gf-bubble ${roleClass}`}>
       <div className="gf-bubble-header">
         <span className="gf-bubble-role">
           {isUser ? 'You' : message.modelName ?? message.role}

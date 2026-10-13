@@ -30,6 +30,7 @@ import {
 } from '../../lib/toolLoop';
 import {
   getProviders,
+  isLocalProvider,
   listModels,
   type ModelInfo,
   type ProviderSummary,
@@ -1150,6 +1151,9 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
                   }}
                   reactions={reactions}
                   onArtifactSubmit={running ? undefined : handleArtifactSubmit}
+                  assistantVariant={
+                    isLocalProvider(providers.find((p) => p.id === providerId)) ? 'local' : 'cloud'
+                  }
                 />
                 {m.media.length > 0 && (
                   <div className="agent-media-row">

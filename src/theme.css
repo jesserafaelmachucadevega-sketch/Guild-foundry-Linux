@@ -297,38 +297,66 @@ body {
   font-size: 12.5px;
 }
 
-/* Text-message style: user on right (blue), assistant on left (panel bg). */
+/* Text-message style: you on the right (white bubble); the model on the left,
+   blue when it runs in the cloud and green when it runs locally. */
 .gf-bubble-user {
   margin-left: auto;
   max-width: 60%;
-  background: var(--gf-gold);
-  color: #0a0a0a;
+  background: #ffffff;
+  color: #0d1b33;
   border-radius: 12px 4px 12px 12px;
-  border-color: var(--gf-gold);
+  border-color: var(--gf-border-strong, #7d9fd4);
 }
 .gf-bubble-user .gf-bubble-header {
-  background: var(--gf-gold-bright);
-  color: #0a0a0a;
+  background: #eef3fb;
+  color: #0d1b33;
+  border-radius: 12px 4px 0 0;
 }
 .gf-bubble-user .gf-bubble-body {
-  background: var(--gf-gold);
-  color: #0a0a0a;
+  background: #ffffff;
+  color: #0d1b33;
   border-radius: 0 0 12px 12px;
 }
 .gf-bubble-user .gf-bubble-body pre {
-  background: #060b16;
-  color: var(--gf-offwhite);
+  background: #eef3fb;
+  color: #0d1b33;
 }
 
 .gf-bubble-assistant {
   margin-right: auto;
   max-width: 60%;
-  background: var(--gf-panel);
+  background: var(--gf-bubble-cloud, #2e7de9);
+  color: #ffffff;
   border-radius: 4px 12px 12px 12px;
-  border-color: var(--gf-border);
+  border-color: var(--gf-bubble-cloud, #2e7de9);
 }
 .gf-bubble-assistant .gf-bubble-header {
-  background: var(--gf-panel-2);
+  background: var(--gf-bubble-cloud-strong, #2a72d4);
+  color: #ffffff;
+  border-radius: 4px 12px 0 0;
+}
+.gf-bubble-assistant .gf-bubble-body {
+  color: #ffffff;
+}
+.gf-bubble-assistant .gf-bubble-body pre {
+  background: rgba(4, 10, 24, 0.35);
+  color: #f2f6ff;
+}
+.gf-bubble-assistant .gf-icon-btn {
+  color: #eaf1ff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.gf-bubble-assistant .gf-icon-btn:hover {
+  color: #ffffff;
+  border-color: #ffffff;
+}
+.gf-bubble-assistant--local {
+  background: var(--gf-bubble-local, #34c759);
+  border-color: var(--gf-bubble-local, #34c759);
+}
+.gf-bubble-assistant--local .gf-bubble-header {
+  background: var(--gf-bubble-local-strong, #2fae4f);
+  color: #ffffff;
 }
 
 .gf-bubble-actions-row {

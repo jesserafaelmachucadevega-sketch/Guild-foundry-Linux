@@ -15,6 +15,7 @@ import {
   type DebateRole,
   type ParticipantConfig,
 } from './ParticipantBar';
+import { getProviders, isLocalProvider, type ProviderSummary } from '../../lib/providers';
 import { DebateControls, DEBATE_ROUNDS, type DebatePhase } from './DebateControls';
 import { WinnerDialog } from './WinnerDialog';
 import { SynthesisPanel } from './SynthesisPanel';
@@ -108,16 +109,18 @@ function buildSystemPrompt(p: ParticipantConfig): string {
 function MessageView({
   message,
   onToast,
+  assistantVariant,
 }: {
   message: ChatMessage;
   onToast: (t: string) => void;
+  assistantVariant?: 'cloud' | 'local';
 }): React.ReactElement {
   if (message.role === 'assistant' && extractSduiWidgets(message.content).length > 0) {
     const textOnly = stripSdui(message.content);
     return (
       <>
         {textOnly && (
-          <ChatBubble message={{ ...message, content: textOnly }} onToast={onToast} />
+          <ChatBubble message={{ ...message, content: textOnly }} onToast={onToast} assistantVariant={assistantVariant} />
         )}
         <div className="gf-bubble">
           <div className="gf-bubble-body">
@@ -127,7 +130,7 @@ function MessageView({
       </>
     );
   }
-  return <ChatBubble message={message} onToast={onToast} />;
+  return <ChatBubble message={message} onToast={onToast} assistantVariant={assistantVariant} />;
 }
 
 export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): React.ReactElement {
@@ -136,6 +139,25 @@ export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): R
     blankParticipant(1),
   ]);
   const [panes, setPanes] = useState<PaneState[]>([blankPane(), blankPane()]);
+  const [ctxProviders, setCtxProviders] = useState<ProviderSummary[]>([]);
+
+  // Providers for the bubble colors (local models get green bubbles).
+  useEffect(() => {
+    void getProviders()
+      .then((p) => setCtxProviders(p ?? []))
+      .catch(() => undefined);
+  }, []);
+
+  const variantFor = useCallback(
+    (msg: ChatMessage): 'cloud' | 'local' => {
+      const part = participants.find(
+        (x) => (x.modelName && x.modelName === msg.modelName) || (x.modelId && x.modelId === msg.modelName),
+      );
+      const prov = ctxProviders.find((pr) => pr.id === part?.providerId);
+      return isLocalProvider(prov) ? 'local' : 'cloud';
+    },
+    [participants, ctxProviders],
+  );
 
   // Voice: when speech is unmuted, immediately dictate new assistant messages.
   const spokenRef = useRef<Set<string>>(new Set());
@@ -719,7 +741,7 @@ export function ConferenceRoom({ onToast }: { onToast: (t: string) => void }): R
               </div>
               <div className="gf-pane-msgs">
                 {pane.messages.map((m) => (
-                  <MessageView key={m.id} message={m} onToast={onToast} />
+                  <MessageView key={m.id} message={m} onToast={onToast} assistantVariant={variantFor(m)} />
                 ))}
                 {pane.streamText && (
                   <div className="gf-bubble gf-streaming">

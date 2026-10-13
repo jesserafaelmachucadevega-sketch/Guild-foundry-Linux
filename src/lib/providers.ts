@@ -10,9 +10,23 @@ export type ProviderKind =
   | 'google'
   | 'openrouter'
   | 'ollama'
+  | 'gguf'
   | 'custom';
 
 export type PricingVerified = 'free' | 'paid' | 'unknown';
+
+/** True when this provider runs models on this machine (local files/servers).
+ *  Drives the green-vs-blue bubble distinction in chat surfaces. */
+export function isLocalProvider(p: ProviderSummary | undefined | null): boolean {
+  if (!p) return false;
+  if (p.kind === 'ollama' || p.kind === 'gguf') return true;
+  try {
+    const host = new URL(p.base_url).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
+  } catch {
+    return false;
+  }
+}
 
 export interface ProviderSummary {
   id: string;

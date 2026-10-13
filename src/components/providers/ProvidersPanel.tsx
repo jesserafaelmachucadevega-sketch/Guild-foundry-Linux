@@ -36,6 +36,7 @@ const MODELS_PATH_HINT: Record<ProviderKind, string> = {
   google: '/models',
   openrouter: '/models',
   ollama: '/api/tags',
+  gguf: '—',
   custom: '/models',
 };
 
