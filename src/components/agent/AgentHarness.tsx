@@ -88,6 +88,8 @@ interface ThreadMsg {
   ts: number;
   /** Replies to this message id — the quote is appended to the new user input. */
   replyTo?: string;
+  /** Emoji reactions on this message. */
+  reactions?: Record<string, number>;
 }
 
 interface TraceEntry {
@@ -232,12 +234,15 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
   const [showDocUpload, setShowDocUpload] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [docPreview, setDocPreview] = useState<{ name: string; text: string } | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const cancelRef = useRef<(() => void) | null>(null);
   const asstIdRef = useRef<string | null>(null);
   const asstFullRef = useRef('');
   const callArgsRef = useRef(new Map<string, ToolCall>());
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const threadContainerRef = useRef<HTMLDivElement | null>(null);
+  const historyReadyRef = useRef(false);
   const desktop = isDesktop();
 
   const pushTrace = useCallback((kind: TraceEntry['kind'], label: string, detail?: string) => {
@@ -288,18 +293,74 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
        })
        .catch(() => undefined);
      void invoke<string | null>('settings_load_prompts')
-       .then((prompts) => {
-         const p = (prompts ?? {}) as Record<string, string>;
-         if (p['agent-harness'] && p['agent-harness'].trim()) {
-           setAgentPrompt(p['agent-harness']);
-         }
-       })
-       .catch(() => undefined);
-   }, [desktop, reloadProviders]);
+        .then((prompts) => {
+          const p = (prompts ?? {}) as Record<string, string>;
+          if (p['agent-harness'] && p['agent-harness'].trim()) {
+            setAgentPrompt(p['agent-harness']);
+          }
+        })
+        .catch(() => undefined);
+     // Load saved thread history (persisted across model swaps)
+     void invoke<unknown>('settings_get', { key: 'agent.thread_history' })
+        .then((saved) => {
+          let arr: ThreadMsg[] | null = null;
+          if (Array.isArray(saved)) arr = saved as ThreadMsg[];
+          else if (typeof saved === 'string' && saved.trim()) {
+            try {
+              const parsed: unknown = JSON.parse(saved);
+              if (Array.isArray(parsed)) arr = parsed as ThreadMsg[];
+            } catch {
+              // corrupt history — start fresh
+            }
+          }
+          if (arr && arr.length > 0) {
+            setThread(arr);
+            setReactions(arr.reduce((acc, m) => {
+              // Reactions are stored in thread message metadata
+              const msgReactions = m.reactions;
+              if (msgReactions) acc[m.id] = msgReactions;
+              return acc;
+            }, {} as Record<string, Record<string, number>>));
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          historyReadyRef.current = true;
+        });
+    }, [desktop, reloadProviders]);
+
+  // Persist the thread (debounced) so it survives model swaps & restarts.
+  // Stored as a JSON value; an empty array persists a cleared history.
+  useEffect(() => {
+    if (!desktop || !historyReadyRef.current) return;
+    const serializable = thread.map((m) => ({
+      ...m,
+      reactions: reactions[m.id],
+    }));
+    const handle = window.setTimeout(() => {
+      void invoke('settings_set', {
+        key: 'agent.thread_history',
+        value: serializable,
+      }).catch(() => undefined);
+    }, 800);
+    return () => window.clearTimeout(handle);
+  }, [thread, reactions, desktop]);
 
   useEffect(() => {
     if (providerId) void loadModels(providerId);
   }, [providerId, loadModels]);
+
+  useEffect(() => {
+    const container = threadContainerRef.current;
+    if (!container) return;
+    const onScroll = () => {
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 20;
+      setShowScrollBottom(!isAtBottom);
+    };
+    onScroll();
+    container.addEventListener('scroll', onScroll);
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [tab]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -657,6 +718,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
     setPendingApproval(null);
     setPendingQuestion(null);
     setThread([]);
+    setReactions({});
     setTrace([]);
     setToolCount(0);
     asstIdRef.current = null;
@@ -747,7 +809,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
             </div>
           )}
 
-          <div className="agent-thread" aria-live="polite">
+          <div className="agent-thread" aria-live="polite" ref={threadContainerRef}>
             {thread.length === 0 && (
               <div className="agent-empty">
                 <p>
@@ -771,6 +833,10 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
                       const existing = prev[msgId] ?? {};
                       return { ...prev, [msgId]: { ...existing, [emoji]: (existing[emoji] ?? 0) + 1 } };
                     });
+                    // Also persist on the thread message itself
+                    setThread((prev) => prev.map((m) =>
+                      m.id === msgId ? { ...m, reactions: { ...(m.reactions ?? {}), [emoji]: ((m.reactions?.[emoji] ?? 0) + 1) } } : m
+                    ));
                   }}
                   reactions={reactions}
                 />
@@ -785,6 +851,16 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
             ))}
             <div ref={threadEndRef} />
           </div>
+
+          {showScrollBottom && (
+            <button
+              className="gf-btn gf-scroll-bottom"
+              title="Scroll to bottom"
+              onClick={() => threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}
+            >
+              ↓
+            </button>
+          )}
 
           {showTrace && (
             <div className="agent-trace" aria-label="Activity trace">

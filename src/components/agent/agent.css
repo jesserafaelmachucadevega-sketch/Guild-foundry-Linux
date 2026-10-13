@@ -77,10 +77,13 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 
 .agent-empty {
@@ -246,3 +249,100 @@
   line-height: 1;
 }
 .gf-suggested-dismiss:hover { color: var(--gf-danger); border-color: var(--gf-danger); }
+
+/* Resizable / minimizable chat window */
+.agent-window {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 400px;
+  height: 60vh;
+  min-width: 300px;
+  min-height: 200px;
+  background: var(--gf-panel);
+  border: 1px solid var(--gf-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.agent-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--gf-panel-2);
+  border-bottom: 1px solid var(--gf-border);
+  cursor: grab;
+  user-select: none;
+  font-size: 12px;
+  color: var(--gf-tan);
+}
+.agent-window-header:active {
+  cursor: grabbing;
+}
+
+.agent-window-controls {
+  display: flex;
+  gap: 4px;
+}
+.agent-window-controls button {
+  background: transparent;
+  border: 1px solid var(--gf-border);
+  color: var(--gf-muted);
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.agent-window-controls button:hover {
+  color: var(--gf-gold);
+  border-color: var(--gf-gold);
+}
+
+.agent-window.minimized {
+  height: 36px;
+  overflow: hidden;
+}
+
+.agent-window.resized {
+  width: 30vw;
+  height: 40vh;
+}
+
+/* Scroll to bottom button */
+.gf-scroll-bottom {
+  position: absolute;
+  bottom: 70px;
+  right: 20px;
+  background: var(--gf-gold);
+  color: #0a0a0a;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  opacity: 0.8;
+}
+.gf-scroll-bottom:hover {
+  opacity: 1;
+}
+.gf-scroll-bottom.hidden {
+  display: none;
+}
+
+/* Draggable divider */
+.agent-divider {
+  cursor: col-resize;
+  touch-action: none;
+}
+.agent-divider:hover {
+  background: var(--gf-gold);
+}

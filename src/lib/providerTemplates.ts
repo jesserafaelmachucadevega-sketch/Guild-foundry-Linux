@@ -139,6 +139,52 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     'Azure OpenAI API key',
     'Replace YOUR-RESOURCE with your Azure resource name. New v1 route: {endpoint}/openai/v1. Key in Azure portal → Keys and Endpoint.',
   ),
+  // --- Local model providers (Phase 16) ---
+  t(
+    'jan',
+    'Jan (Local)',
+    'openai-compatible',
+    'http://localhost:1337/v1',
+    '/models',
+    'No key needed (local)',
+    'Jan is a local-first AI desktop. Point this at your Jan server (default http://localhost:1337/v1). No API key — models run on-device.',
+  ),
+  t(
+    'unsloth',
+    'Unsloth (Local)',
+    'openai-compatible',
+    'http://localhost:8000/v1',
+    '/models',
+    'No key needed (local)',
+    'Unsloth is a local fine-tuning toolkit. Serve a model with any OpenAI-compatible runtime (llama.cpp, vLLM, and similar) and point this at that endpoint — vLLM defaults to port 8000.',
+  ),
+  t(
+    'lm-studio',
+    'LM Studio (Local)',
+    'openai-compatible',
+    'http://localhost:1234/v1',
+    '/models',
+    'No key needed (local)',
+    'LM Studio runs models locally with an OpenAI-compatible server. Start it from the Developer section in LM Studio; default endpoint http://localhost:1234/v1.',
+  ),
+  t(
+    'librechat',
+    'LibreChat (API mode)',
+    'openai-compatible',
+    'http://localhost:3080',
+    '/models',
+    'Depends on your setup',
+    'LibreChat is a chat interface, not a model server. Only point this here if you run its API gateway in a compatible mode; otherwise configure the provider behind it directly.',
+  ),
+  t(
+    'ollama',
+    'Ollama (Local)',
+    'ollama',
+    'http://localhost:11434',
+    '/api/tags',
+    'No key needed (local)',
+    'Ollama serves models locally. The models list comes from GET /api/tags. No API key required — just run `ollama serve`.',
+  ),
 ];
 
 export function templateByName(name: string): ProviderTemplate | undefined {
