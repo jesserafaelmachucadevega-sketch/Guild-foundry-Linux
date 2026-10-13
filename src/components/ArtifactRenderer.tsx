@@ -4,12 +4,13 @@ import type { Artifact } from '../lib/types';
 // Phase 1 shell of the SDUI engine (polls, checklists, sliders, cards,
 // whiteboards, stickies). Agents create these with the `artifact.create` tool;
 // the Agent tab appends the returned artifact to the message's artifacts array.
-export function ArtifactRenderer({ artifact }: { artifact: Artifact }): React.ReactElement {
+export function ArtifactRenderer({ artifact, onSubmit }: { artifact: Artifact; onSubmit?: (values: Record<string, unknown>) => void }): React.ReactElement {
   const [checked, setChecked] = useState<boolean[]>(
     (artifact.items ?? []).map((i) => i.checked),
   );
   const [slider, setSlider] = useState<number>(artifact.value ?? artifact.min ?? 0);
   const [voted, setVoted] = useState<number | null>(null);
+  const [textInputs,setTextInputs] = useState<Record<string, string>>({});
 
   if (artifact.kind === 'sticky') {
     return (
@@ -79,21 +80,68 @@ export function ArtifactRenderer({ artifact }: { artifact: Artifact }): React.Re
   }
 
   if (artifact.kind === 'poll') {
+    const options = artifact.options ?? [];
     return (
-      <div style={{ marginTop: 8, border: '1px solid var(--gf-border)', padding: 8 }}>
+      <div style={{ marginTop: 8, border: '1px solid var(--gf-border)', padding: 8, maxWidth: 500 }}>
         <div className="gf-label">{artifact.title}</div>
-        {(artifact.options ?? []).map((opt, i) => (
-          <div key={i} className="gf-row" style={{ marginTop: 4 }}>
-            <button
-              className="gf-btn"
-              style={{ padding: '4px 10px' }}
-              onClick={() => setVoted(i)}
-            >
-              {voted === i ? '[x]' : '[ ]'}
-            </button>
-            <span>{opt}</span>
-          </div>
-        ))}
+        {options.map((opt, i) => {
+          const isBlank = opt === '__blank__' || opt === 'blank';
+          const inputKey = `poll-opt-${i}`;
+          if (isBlank) {
+            return (
+              <div key={i} className="gf-row" style={{ marginTop: 4 }}>
+                <button
+                  className="gf-btn"
+                  style={{ padding: '4px 10px' }}
+                  onClick={() => setVoted(i)}
+                >
+                  {voted === i ? '[x]' : '[ ]'}
+                </button>
+                <input
+                  type="text"
+                  className="gf-input"
+                  placeholder="Enter your answer…"
+                  style={{ flex: 1, minWidth: 100 }}
+                  value={textInputs[inputKey] ?? ''}
+                  onChange={(e) => setTextInputs((p) => ({ ...p, [inputKey]: e.target.value }))}
+                  onClick={() => setVoted(i)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && voted === i) {
+                      onSubmit?.({ option: i, value: textInputs[inputKey] });
+                    }
+                  }}
+                />
+              </div>
+            );
+          }
+          return (
+            <div key={i} className="gf-row" style={{ marginTop: 4 }}>
+              <button
+                className="gf-btn"
+                style={{ padding: '4px 10px' }}
+                onClick={() => {
+                  setVoted(i);
+                  onSubmit?.({ option: i, value: opt });
+                }}
+              >
+                {voted === i ? '[x]' : '○'}
+              </button>
+              <span>{opt}</span>
+            </div>
+          );
+        })}
+        {voted !== null && !options[voted] && (
+          <button
+            className="gf-btn primary"
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              const opt = options[voted];
+              onSubmit?.({ option: voted, value: opt === '__blank__' ? textInputs[`poll-opt-${voted}`] : opt });
+            }}
+          >
+            Submit
+          </button>
+        )}
       </div>
     );
   }

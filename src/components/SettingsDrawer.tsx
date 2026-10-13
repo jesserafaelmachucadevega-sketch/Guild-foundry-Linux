@@ -7,6 +7,7 @@ import type { NavSection } from './AppShell';
 // Model & API hub — this drawer keeps the prompts only.
 
 const PROMPT_FIELDS = [
+  { id: 'agent-harness', label: 'Personal Agent (Agent tab)' },
   { id: 'conference-1', label: 'Conference Model 1' },
   { id: 'conference-2', label: 'Conference Model 2' },
   { id: 'conference-3', label: 'Conference Model 3' },

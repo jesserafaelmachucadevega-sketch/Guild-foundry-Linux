@@ -297,6 +297,127 @@ body {
   font-size: 12.5px;
 }
 
+/* Text-message style: user on right (blue), assistant on left (panel bg). */
+.gf-bubble-user {
+  margin-left: auto;
+  max-width: 60%;
+  background: var(--gf-gold);
+  color: #0a0a0a;
+  border-radius: 12px 4px 12px 12px;
+  border-color: var(--gf-gold);
+}
+.gf-bubble-user .gf-bubble-header {
+  background: var(--gf-gold-bright);
+  color: #0a0a0a;
+}
+.gf-bubble-user .gf-bubble-body {
+  background: var(--gf-gold);
+  color: #0a0a0a;
+  border-radius: 0 0 12px 12px;
+}
+.gf-bubble-user .gf-bubble-body pre {
+  background: #060b16;
+  color: var(--gf-offwhite);
+}
+
+.gf-bubble-assistant {
+  margin-right: auto;
+  max-width: 60%;
+  background: var(--gf-panel);
+  border-radius: 4px 12px 12px 12px;
+  border-color: var(--gf-border);
+}
+.gf-bubble-assistant .gf-bubble-header {
+  background: var(--gf-panel-2);
+}
+
+.gf-bubble-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 6px 8px;
+  border-top: 1px solid var(--gf-border);
+  position: relative;
+}
+
+.gf-reply {
+  transform: scaleX(-1);
+}
+.gf-emoji-btn {
+  font-size: 14px;
+}
+.gf-emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  background: var(--gf-panel-2);
+  border: 1px solid var(--gf-border);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 10;
+}
+.gf-emoji-picker button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+}
+.gf-emoji-picker button:hover {
+  background: var(--gf-dark-grey);
+}
+
+.gf-reaction-summary {
+  font-size: 11px;
+  color: var(--gf-muted);
+  padding: 0 8px;
+}
+
+/* Agent tab thread container */
+.agent-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.agent-doc-upload {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--gf-border);
+  border-radius: 6px;
+  background: var(--gf-panel);
+}
+
+.agent-preview-window {
+  margin-top: 8px;
+  border: 1px solid var(--gf-border);
+  border-radius: 6px;
+  background: var(--gf-panel);
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--gf-border);
+  font-size: 12px;
+}
+
+.agent-preview-body {
+  flex: 1;
+  padding: 10px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ---------- Inputs / buttons ---------- */
 .gf-input, .gf-textarea, .gf-select {
   background: var(--gf-dark-grey);

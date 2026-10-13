@@ -120,6 +120,30 @@
 }
 .agent-media figcaption a { color: var(--gf-gold); }
 
+.agent-media-loading {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.agent-media-skeleton {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  bottom: 28px;
+  background: var(--gf-dark-grey);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gf-muted);
+  font-size: 12px;
+}
+
 .agent-trace {
   border-top: 1px solid var(--gf-border);
   background: var(--gf-panel);
