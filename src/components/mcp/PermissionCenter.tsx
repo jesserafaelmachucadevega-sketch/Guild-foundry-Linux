@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Phase 7 — Permission Center: 8 domains x 5 levels matrix + tool registry.
+// Phase 7 — Permission Center: 10 domains x 5 levels matrix + tool registry.
 // Reads/writes the Rust permission commands (perm_list / perm_set) and the
 // MCP tool registry (mcp_tool_registry_list / mcp_tool_set_enabled).
 

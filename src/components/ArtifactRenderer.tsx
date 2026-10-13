@@ -130,13 +130,13 @@ export function ArtifactRenderer({ artifact, onSubmit }: { artifact: Artifact; o
             </div>
           );
         })}
-        {voted !== null && !options[voted] && (
+        {voted !== null && (options[voted] === '__blank__' || options[voted] === 'blank') && (
           <button
             className="gf-btn primary"
             style={{ marginTop: 8 }}
+            disabled={!(textInputs[`poll-opt-${voted}`] ?? '').trim()}
             onClick={() => {
-              const opt = options[voted];
-              onSubmit?.({ option: voted, value: opt === '__blank__' ? textInputs[`poll-opt-${voted}`] : opt });
+              onSubmit?.({ option: voted, value: (textInputs[`poll-opt-${voted}`] ?? '').trim() });
             }}
           >
             Submit

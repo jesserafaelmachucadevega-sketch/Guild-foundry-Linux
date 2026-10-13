@@ -16,6 +16,7 @@ mod build;
 mod db;
 mod diagnostics;
 mod git;
+mod harness;
 mod index;
 mod integrations;
 mod mcp;
@@ -220,6 +221,9 @@ fn main() {
             integrations::email::email_test_connection,
             integrations::calendar::calendar_test_connection,
             integrations::twilio::twilio_test_connection,
+            harness::harness_thread_load,
+            harness::harness_thread_save,
+            harness::harness_thread_clear,
             // Phase 7 — MCP gateway + permissions
             mcp::mcp_server_add,
             mcp::mcp_server_update,

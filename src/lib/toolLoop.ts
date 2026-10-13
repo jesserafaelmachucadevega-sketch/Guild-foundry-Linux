@@ -38,6 +38,8 @@ export interface CapabilityManifest {
   unavailable: string[];
   requires_approval: string[];
   restricted: string[];
+  /** Registered tools that need a user connection before they can run. */
+  needs_setup: string[];
 }
 
 export interface ToolHandshake {
@@ -73,6 +75,12 @@ export interface ToolLoopOptions {
   sessionId: string;
   agentId: string;
   maxTurns: number;
+  /**
+   * Prior conversation for model context (model-agnostic replay). The host
+   * passes the visible transcript so any model swapped in mid-thread picks
+   * up exactly where the last one left off.
+   */
+  history?: ChatMsg[];
   /** First user message. Defaults to a generic task-start prompt. */
   userMessage?: string;
   onEvent: (e: ToolLoopEvent) => void;
@@ -194,6 +202,7 @@ export function runToolLoop(opts: ToolLoopOptions): { cancel: () => void } {
 
       const messages: ChatMsg[] = [
         { role: 'system', content: system },
+        ...(opts.history ?? []),
         { role: 'user', content: opts.userMessage ?? 'Begin executing your assigned task.' },
       ];
 

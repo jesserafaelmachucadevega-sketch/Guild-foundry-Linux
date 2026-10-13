@@ -181,6 +181,14 @@ fn apply_migrations(conn: &Connection) -> rusqlite::Result<()> {
             [],
         )?;
     }
+    // Personal Agent thread persistence (model-agnostic chat history).
+    if current < 4 {
+        conn.execute_batch(crate::harness::MIGRATION_HARNESS_V4)?;
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (4, datetime('now'))",
+            [],
+        )?;
+    }
     let _ = CURRENT_SCHEMA_VERSION;
     Ok(())
 }

@@ -10,6 +10,7 @@ interface Props {
   onReply?: (message: ChatMessage) => void;
   onEmojiReaction?: (messageId: string, emoji: string) => void;
   reactions?: Record<string, Record<string, number>>;
+  onArtifactSubmit?: (message: ChatMessage, artifact: Artifact, values: Record<string, unknown>) => void;
 }
 
 const EMOJI_REACTIONS = ['😊','😂','❓','❗','🤯','😛'];
@@ -25,7 +26,7 @@ function renderText(content: string): React.ReactNode {
   });
 }
 
-export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReaction, reactions }: Props): React.ReactElement {
+export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReaction, reactions, onArtifactSubmit }: Props): React.ReactElement {
   const [showEmojis, setShowEmojis] = useState(false);
   const isUser = message.role === 'user';
 
@@ -70,7 +71,11 @@ export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReactio
       <div className="gf-bubble-body">
         {renderText(message.content)}
         {(message.artifacts ?? []).map((a: Artifact, i: number) => (
-          <ArtifactRenderer key={i} artifact={a} />
+          <ArtifactRenderer
+            key={i}
+            artifact={a}
+            onSubmit={onArtifactSubmit ? (values) => onArtifactSubmit(message, a, values) : undefined}
+          />
         ))}
       </div>
       <div className="gf-bubble-actions-row">
