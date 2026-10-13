@@ -45,11 +45,14 @@ import { VoiceControls } from '../voice/VoiceControls';
 import { getSpeechEnabled, speakText } from '../voice/speech';
 import { MemoryTabs } from '../memory/MemoryTabs';
 import { AvatarPicker } from '../avatar/AvatarPicker';
+import { FloatingShell } from '../common/FloatingWindow';
 import './agent.css';
 
 interface Props {
   onToast: (t: string) => void;
   onNavigate: (s: NavSection) => void;
+  /** 'agent' = the Personal Agent tab; 'projects' = the coding workspace. */
+  variant?: 'agent' | 'projects';
 }
 
 const DEFAULT_AGENT_PROMPT = `You are the user's personal AI companion inside Guild Foundry. The user's name is Jesse.
@@ -74,6 +77,16 @@ RULES (mandatory):
   credentials needs the user's approval: propose the action and wait.
 - When asked for an image or video, call media.generate_image / media.generate_video and
   confirm briefly once the result is rendered — do not paste raw JSON.`;
+
+const DEFAULT_CODING_PROMPT = `You are the coding agent inside the Projects workspace. You work on the user's real project
+files: read with project.read, search with project.search, edit with project.write /
+project.create_file, run commands with terminal.exec, build with build.start, test with
+test.run, and inspect history with git.status / git.diff / git.log. git.commit commits the
+STAGED changes (approval-gated); pushing stays manual in the Git panel.
+
+Work in small verified steps: read before writing, keep edits focused, run the build or
+tests after changes, and report exactly what you changed. Never invent results — only
+report what a TOOL RESULT actually returned.`;
 
 interface MediaAtt {
   kind: 'image' | 'video';
@@ -294,7 +307,11 @@ function SamplingEditor({
   );
 }
 
-export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement {
+export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props): React.ReactElement {
+  const isProjects = variant === 'projects';
+  const promptKey = isProjects ? 'projects-agent' : 'agent-harness';
+  const agentId = isProjects ? 'projects-agent' : 'agent-harness';
+  const conversationId = isProjects ? 'projects' : 'main';
   const [tab, setTab] = useState<'chat' | 'memory'>('chat');
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [providerId, setProviderId] = useState('');
@@ -313,7 +330,10 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
   const [suggestToken, setSuggestToken] = useState(0);
   const [gender, setGender] = useState<AvatarGender>('girl');
   const [toolDomains, setToolDomains] = useState<Record<string, string>>({});
-  const [agentPrompt, setAgentPrompt] = useState(DEFAULT_AGENT_PROMPT);
+  const [agentPrompt, setAgentPrompt] = useState(() =>
+    variant === 'projects' ? DEFAULT_CODING_PROMPT : DEFAULT_AGENT_PROMPT,
+  );
+  const [floating, setFloating] = useState(false);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
   const [sampling, setSampling] = useState<SamplingConfig>({});
   const [replyTo, setReplyTo] = useState<ThreadMsg | null>(null);
@@ -382,21 +402,21 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
      void invoke<string | null>('settings_load_prompts')
         .then((prompts) => {
           const p = (prompts ?? {}) as Record<string, string>;
-          if (p['agent-harness'] && p['agent-harness'].trim()) {
-            setAgentPrompt(p['agent-harness']);
+          if (p[promptKey] && p[promptKey].trim()) {
+            setAgentPrompt(p[promptKey]);
           }
         })
         .catch(() => undefined);
      // Load the persisted thread (SQLite — survives restarts AND model swaps).
      void (async () => {
        try {
-         let saved = await invoke<ThreadMsg[]>('harness_thread_load');
+         let saved = await invoke<ThreadMsg[]>('harness_thread_load', { conversation_id: conversationId });
          if (!Array.isArray(saved) || saved.length === 0) {
            // One-time migration from the old settings key, if it exists.
            const legacy = await invoke<unknown>('settings_get', { key: 'agent.thread_history' }).catch(() => null);
            if (Array.isArray(legacy) && legacy.length > 0) {
              saved = legacy as ThreadMsg[];
-             await invoke('harness_thread_save', { messages: legacy }).catch(() => undefined);
+             await invoke('harness_thread_save', { messages: legacy, conversation_id: conversationId }).catch(() => undefined);
            }
            await invoke('settings_set', { key: 'agent.thread_history', value: null }).catch(() => undefined);
          }
@@ -415,7 +435,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
          historyReadyRef.current = true;
        }
      })();
-    }, [desktop, reloadProviders]);
+    }, [desktop, reloadProviders, promptKey, conversationId]);
 
   // Persist the thread (debounced) to SQLite so it survives restarts AND
   // model swaps. An empty array persists a cleared history.
@@ -426,10 +446,10 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
       reactions: reactions[m.id],
     }));
     const handle = window.setTimeout(() => {
-      void invoke('harness_thread_save', { messages: serializable }).catch(() => undefined);
+      void invoke('harness_thread_save', { messages: serializable, conversation_id: conversationId }).catch(() => undefined);
     }, 800);
     return () => window.clearTimeout(handle);
-  }, [thread, reactions, desktop]);
+  }, [thread, reactions, desktop, conversationId]);
 
   useEffect(() => {
     if (providerId) void loadModels(providerId);
@@ -674,7 +694,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
         modelId,
         systemPrompt: agentPrompt,
         sessionId,
-        agentId: 'agent-harness',
+        agentId,
         maxTurns: 12,
         history,
         params: {
@@ -687,7 +707,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
       });
       cancelRef.current = handle.cancel;
     },
-    [running, desktop, providerId, modelId, sessionId, handleEvent, onToast, pushTrace, buildHistory, sampling],
+    [running, desktop, providerId, modelId, sessionId, handleEvent, onToast, pushTrace, buildHistory, sampling, agentId],
   );
 
   const send = useCallback(
@@ -738,14 +758,14 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
         } catch {
           prompts = {};
         }
-        prompts['agent-harness'] = trimmed;
+        prompts[promptKey] = trimmed;
         await invoke('settings_save_prompts', { prompts });
         onToast('Agent prompt saved');
       } catch (e) {
         onToast(e instanceof Error ? e.message : String(e));
       }
     },
-    [onToast],
+    [onToast, promptKey],
   );
 
   const applySampling = useCallback(
@@ -1007,7 +1027,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
           <MemoryTabs />
         </div>
       ) : (
-        <>
+        <FloatingShell floating={floating} onClose={() => setFloating(false)} title="Agent chat" storageKey={variant}>
           <div className="agent-head">
             <AvatarStatus gender={gender} activity={activity} size={56} title="Your personal agent" />
             <div className="agent-selects">
@@ -1050,6 +1070,13 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
                 title="Agent settings — prompt, avatar, sampling"
               >
                 {showAgentSettings ? 'Hide settings' : 'Settings'}
+              </button>
+              <button
+                className="gf-icon-btn"
+                onClick={() => setFloating((f) => !f)}
+                title={floating ? 'Dock the chat back into the page' : 'Pop the chat out into a movable window'}
+              >
+                {floating ? 'Dock' : 'Pop out'}
               </button>
             </div>
           </div>
@@ -1319,7 +1346,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
               </div>
             </div>
           )}
-        </>
+        </FloatingShell>
       )}
     </div>
   );

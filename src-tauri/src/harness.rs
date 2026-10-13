@@ -34,8 +34,12 @@ fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
 }
 
 /// Load the persisted thread in order (empty when nothing was saved yet).
-#[tauri::command]
-pub fn harness_thread_load(app: tauri::AppHandle) -> Result<Vec<Value>, String> {
+#[tauri::command(rename_all = "snake_case")]
+pub fn harness_thread_load(
+    app: tauri::AppHandle,
+    conversation_id: Option<String>,
+) -> Result<Vec<Value>, String> {
+    let conv = conversation_id.unwrap_or_else(|| CONVERSATION.to_string());
     let conn = open_db(&app)?;
     let mut stmt = conn
         .prepare(
@@ -43,7 +47,7 @@ pub fn harness_thread_load(app: tauri::AppHandle) -> Result<Vec<Value>, String> 
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([CONVERSATION], |r| r.get::<_, String>(0))
+        .query_map([conv], |r| r.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for row in rows.flatten() {
@@ -56,13 +60,18 @@ pub fn harness_thread_load(app: tauri::AppHandle) -> Result<Vec<Value>, String> 
 
 /// Replace the persisted thread with `messages` (transactional; an empty
 /// array persists a cleared history).
-#[tauri::command]
-pub fn harness_thread_save(app: tauri::AppHandle, messages: Vec<Value>) -> Result<usize, String> {
+#[tauri::command(rename_all = "snake_case")]
+pub fn harness_thread_save(
+    app: tauri::AppHandle,
+    messages: Vec<Value>,
+    conversation_id: Option<String>,
+) -> Result<usize, String> {
+    let conv = conversation_id.unwrap_or_else(|| CONVERSATION.to_string());
     let mut conn = open_db(&app)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "DELETE FROM agent_thread_messages WHERE conversation_id = ?1",
-        [CONVERSATION],
+        [conv.as_str()],
     )
     .map_err(|e| e.to_string())?;
     {
@@ -79,7 +88,7 @@ pub fn harness_thread_save(app: tauri::AppHandle, messages: Vec<Value>) -> Resul
                 .unwrap_or("")
                 .to_string();
             stmt.execute(rusqlite::params![
-                CONVERSATION,
+                conv.as_str(),
                 i as i64,
                 id,
                 m.to_string()
@@ -92,12 +101,16 @@ pub fn harness_thread_save(app: tauri::AppHandle, messages: Vec<Value>) -> Resul
 }
 
 /// Clear the persisted thread.
-#[tauri::command]
-pub fn harness_thread_clear(app: tauri::AppHandle) -> Result<(), String> {
+#[tauri::command(rename_all = "snake_case")]
+pub fn harness_thread_clear(
+    app: tauri::AppHandle,
+    conversation_id: Option<String>,
+) -> Result<(), String> {
+    let conv = conversation_id.unwrap_or_else(|| CONVERSATION.to_string());
     let conn = open_db(&app)?;
     conn.execute(
         "DELETE FROM agent_thread_messages WHERE conversation_id = ?1",
-        [CONVERSATION],
+        [conv.as_str()],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

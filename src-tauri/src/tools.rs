@@ -671,6 +671,67 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "telephony".into(),
             ready: true,
         },
+        // Git tools (project-root-scoped; commit is approval-gated upstream)
+        ToolDef {
+            name: "git.status".into(),
+            description: "Show the working-tree status of a git project: changed, staged, and untracked files with codes."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "project_root": { "type": "string", "description": "Absolute path to the git project." }
+                }),
+                &["project_root"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "git".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "git.diff".into(),
+            description: "Show the diff of the project (staged or unstaged), optionally for one path."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "project_root": { "type": "string", "description": "Absolute path to the git project." },
+                    "staged": { "type": "boolean", "description": "Diff the staged changes (default false)." },
+                    "path": { "type": "string", "description": "Limit the diff to one path (optional)." }
+                }),
+                &["project_root"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "git".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "git.log".into(),
+            description: "Show recent commits (hash, subject, author, date)."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "project_root": { "type": "string", "description": "Absolute path to the git project." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "How many commits (default 30)." }
+                }),
+                &["project_root"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "git".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "git.commit".into(),
+            description: "Commit the STAGED changes with a message. Approval-gated. Pushing is manual in the Git panel; stage files with terminal.exec (`git add`) first."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "project_root": { "type": "string", "description": "Absolute path to the git project." },
+                    "message": { "type": "string", "description": "Commit message." }
+                }),
+                &["project_root", "message"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "git".into(),
+            ready: true,
+        },
         // MCP tool calling (generic)
         ToolDef {
             name: "mcp.call_tool".into(),
@@ -1493,6 +1554,45 @@ pub fn tool_execute(
         "phone.call_status" => {
             let sid = args.get("call_sid").and_then(|v| v.as_str());
             crate::integrations::twilio::call_status(&app, sid)
+        }
+        // Git tools
+        "git.status" => {
+            let root = arg_str(&args, "project_root")?;
+            if !std::path::Path::new(&root).is_absolute() {
+                return Err("project_root must be an absolute path".to_string());
+            }
+            tauri::async_runtime::block_on(crate::git::git_status(root))
+                .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null))
+        }
+        "git.diff" => {
+            let root = arg_str(&args, "project_root")?;
+            if !std::path::Path::new(&root).is_absolute() {
+                return Err("project_root must be an absolute path".to_string());
+            }
+            let staged = args.get("staged").and_then(|v| v.as_bool()).unwrap_or(false);
+            let path = args.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            tauri::async_runtime::block_on(crate::git::git_diff(root, staged, path)).map(|d| {
+                let (capped, truncated) = crate::integrations::document::cap_text(&d, 120_000);
+                serde_json::json!({ "diff": capped, "truncated": truncated })
+            })
+        }
+        "git.log" => {
+            let root = arg_str(&args, "project_root")?;
+            if !std::path::Path::new(&root).is_absolute() {
+                return Err("project_root must be an absolute path".to_string());
+            }
+            let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as u32);
+            tauri::async_runtime::block_on(crate::git::git_log(root, limit))
+                .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null))
+        }
+        "git.commit" => {
+            let root = arg_str(&args, "project_root")?;
+            if !std::path::Path::new(&root).is_absolute() {
+                return Err("project_root must be an absolute path".to_string());
+            }
+            let message = arg_str(&args, "message")?;
+            tauri::async_runtime::block_on(crate::git::git_commit(root, message))
+                .map(|summary| serde_json::json!({ "committed": true, "summary": summary }))
         }
         // Email tools
         "email.list" => {

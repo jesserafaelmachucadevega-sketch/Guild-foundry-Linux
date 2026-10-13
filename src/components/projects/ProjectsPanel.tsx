@@ -9,6 +9,7 @@ import { CodeEditor, type AgentHighlight } from './CodeEditor';
 import { Terminal } from './Terminal';
 import { GitPanel } from './GitPanel';
 import { CheckpointPanel } from './CheckpointPanel';
+import { AgentHarness } from '../agent/AgentHarness';
 import './projects.css';
 
 export function ProjectsPanel({
@@ -21,6 +22,7 @@ export function ProjectsPanel({
   const [openRequest, setOpenRequest] = useState<{ rel: string; nonce: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [agentHighlight, setAgentHighlight] = useState<AgentHighlight | null>(null);
+  const [showCodingAgent, setShowCodingAgent] = useState(true);
 
   const loadDefaultRoot = async () => {
     try {
@@ -103,6 +105,13 @@ export function ProjectsPanel({
         <button className="gf-btn" onClick={() => void applyRoot()}>
           Set
         </button>
+        <button
+          className="gf-btn"
+          onClick={() => setShowCodingAgent((s) => !s)}
+          title="Coding agent — the same assistant, same tools, focused on this project"
+        >
+          {showCodingAgent ? 'Hide agent' : 'Coding agent'}
+        </button>
       </div>
       <div className="gf-projects" style={{ flex: 1, minHeight: 0 }}>
         <ProjectExplorer
@@ -131,6 +140,11 @@ export function ProjectsPanel({
             <Terminal projectRoot={projectRoot} onToast={onToast} />
           </div>
         </div>
+        {showCodingAgent && (
+          <div className="gf-projects-col" style={{ width: 400, minWidth: 320 }}>
+            <AgentHarness variant="projects" onToast={onToast} onNavigate={() => {}} />
+          </div>
+        )}
         <div className="gf-projects-col" style={{ width: 380, minWidth: 300 }}>
           <div style={{ flex: 1, display: 'flex', minHeight: 0, borderBottom: '1px solid var(--gf-border)' }}>
             <GitPanel projectRoot={projectRoot} onToast={onToast} />

@@ -367,3 +367,17 @@
   font-family: inherit;
   resize: vertical;
 }
+
+/* Floating-window resize grip (bottom-right corner) */
+.agent-window-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 52%, var(--gf-border) 52%);
+}
+.agent-window-resize:hover {
+  background: linear-gradient(135deg, transparent 52%, var(--gf-gold) 52%);
+}
