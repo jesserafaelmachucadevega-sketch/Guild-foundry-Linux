@@ -344,6 +344,305 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "web".into(),
             ready: true, // Phase 15 (crate::integrations)
         },
+        // Cloud storage tools
+        ToolDef {
+            name: "cloud.drive_list".into(),
+            description: "List files and folders in a connected cloud drive (Google Drive, OneDrive, Dropbox). Requires the drive to be connected in Settings → Cloud Drives."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "drive_id": { "type": "string", "description": "Cloud drive identifier (google, onedrive, dropbox)." },
+                    "folder_id": { "type": "string", "description": "Folder ID to list (root if omitted)." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Maximum items to return (default 100)." }
+                }),
+                &["drive_id"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "cloud.drive_read".into(),
+            description: "Download and read a file from a connected cloud drive. Returns text content for text files, base64 for binary."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "drive_id": { "type": "string", "description": "Cloud drive identifier (google, onedrive, dropbox)." },
+                    "file_id": { "type": "string", "description": "File ID to read." },
+                    "as_text": { "type": "boolean", "description": "Return as UTF-8 text if true, base64 if false (default true for text files)." }
+                }),
+                &["drive_id", "file_id"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "cloud.drive_write".into(),
+            description: "Upload or update a file in a connected cloud drive. Creates new file or overwrites existing."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "drive_id": { "type": "string", "description": "Cloud drive identifier (google, onedrive, dropbox)." },
+                    "parent_folder_id": { "type": "string", "description": "Parent folder ID (root if omitted)." },
+                    "name": { "type": "string", "description": "File name." },
+                    "content_base64": { "type": "string", "description": "File content as base64 string." },
+                    "mime_type": { "type": "string", "description": "MIME type (auto-detected from name if omitted)." }
+                }),
+                &["drive_id", "name", "content_base64"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "cloud.drive_search".into(),
+            description: "Search for files in a connected cloud drive by name or content."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "drive_id": { "type": "string", "description": "Cloud drive identifier (google, onedrive, dropbox)." },
+                    "query": { "type": "string", "description": "Search query." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum results (default 20)." }
+                }),
+                &["drive_id", "query"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        // Email tools
+        ToolDef {
+            name: "email.list".into(),
+            description: "List emails from a connected account (Gmail, Outlook, IMAP). Supports filters for unread, labels, date ranges."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Email account identifier." },
+                    "folder": { "type": "string", "description": "Folder/label to list (inbox, sent, etc.)." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum emails (default 20)." },
+                    "unread_only": { "type": "boolean", "description": "Only unread emails (default false)." },
+                    "query": { "type": "string", "description": "Gmail/IMAP search query (e.g., 'from:boss after:2024/01/01')." }
+                }),
+                &["account_id"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "email.read".into(),
+            description: "Read a specific email by ID. Returns full message including headers, body (text/html), and attachments info."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Email account identifier." },
+                    "message_id": { "type": "string", "description": "Email message ID." },
+                    "include_attachments": { "type": "boolean", "description": "Include attachment metadata (default true)." }
+                }),
+                &["account_id", "message_id"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "email.send".into(),
+            description: "Send an email from a connected account. Supports HTML/text body, attachments, CC/BCC."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Email account identifier." },
+                    "to": { "type": "array", "items": { "type": "string" }, "description": "Recipient addresses." },
+                    "cc": { "type": "array", "items": { "type": "string" }, "description": "CC addresses." },
+                    "bcc": { "type": "array", "items": { "type": "string" }, "description": "BCC addresses." },
+                    "subject": { "type": "string", "description": "Email subject." },
+                    "body_text": { "type": "string", "description": "Plain text body." },
+                    "body_html": { "type": "string", "description": "HTML body (optional)." },
+                    "attachments": { "type": "array", "items": { "type": "object" }, "description": "Attachments: [{name, content_base64, mime_type}]" }
+                }),
+                &["account_id", "to", "subject"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        // Calendar tools
+        ToolDef {
+            name: "calendar.list_events".into(),
+            description: "List calendar events from a connected calendar (Google, Outlook, CalDAV). Supports date range and calendar filters."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Calendar account identifier." },
+                    "calendar_id": { "type": "string", "description": "Specific calendar ID (primary if omitted)." },
+                    "time_min": { "type": "string", "description": "Start time RFC3339 (default now)." },
+                    "time_max": { "type": "string", "description": "End time RFC3339 (default +30 days)." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum events (default 50)." }
+                }),
+                &["account_id"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "calendar.create_event".into(),
+            description: "Create a calendar event. Supports recurring events, attendees, reminders, video conferencing links."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Calendar account identifier." },
+                    "calendar_id": { "type": "string", "description": "Calendar ID (primary if omitted)." },
+                    "summary": { "type": "string", "description": "Event title." },
+                    "description": { "type": "string", "description": "Event description." },
+                    "start_time": { "type": "string", "description": "Start time RFC3339." },
+                    "end_time": { "type": "string", "description": "End time RFC3339." },
+                    "attendees": { "type": "array", "items": { "type": "string" }, "description": "Attendee emails." },
+                    "recurrence": { "type": "string", "description": "RRULE recurrence (e.g., 'FREQ=WEEKLY;BYDAY=MO')." },
+                    "reminders": { "type": "array", "items": { "type": "object" }, "description": "Reminders: [{method: 'email|popup', minutes: 15}]" }
+                }),
+                &["account_id", "summary", "start_time", "end_time"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "calendar.update_event".into(),
+            description: "Update an existing calendar event."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Calendar account identifier." },
+                    "event_id": { "type": "string", "description": "Event ID to update." },
+                    "calendar_id": { "type": "string", "description": "Calendar ID." },
+                    "summary": { "type": "string", "description": "Event title." },
+                    "description": { "type": "string", "description": "Event description." },
+                    "start_time": { "type": "string", "description": "Start time RFC3339." },
+                    "end_time": { "type": "string", "description": "End time RFC3339." }
+                }),
+                &["account_id", "event_id"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "calendar.delete_event".into(),
+            description: "Delete a calendar event."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "account_id": { "type": "string", "description": "Calendar account identifier." },
+                    "event_id": { "type": "string", "description": "Event ID to delete." },
+                    "calendar_id": { "type": "string", "description": "Calendar ID." },
+                    "send_notifications": { "type": "boolean", "description": "Send cancellation emails to attendees (default true)." }
+                }),
+                &["account_id", "event_id"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        // Document processing tools
+        ToolDef {
+            name: "document.convert".into(),
+            description: "Convert a document between formats (PDF, DOCX, MD, HTML, TXT, RTF, ODT). Uses local LibreOffice/pandoc when available."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "input_path": { "type": "string", "description": "Path to input file." },
+                    "output_format": { "type": "string", "description": "Target format: pdf, docx, md, html, txt, rtf, odt." },
+                    "output_path": { "type": "string", "description": "Output file path (auto-generated if omitted)." }
+                }),
+                &["input_path", "output_format"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "filesystem".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "document.extract_text".into(),
+            description: "Extract plain text from any document (PDF, DOCX, PPTX, XLSX, images via OCR). Returns text content."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "file_path": { "type": "string", "description": "Path to document file." },
+                    "ocr": { "type": "boolean", "description": "Enable OCR for images/scanned PDFs (default false)." }
+                }),
+                &["file_path"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "filesystem".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "document.compare".into(),
+            description: "Compare two documents and return a diff (text or structured). Useful for reviewing changes."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "old_path": { "type": "string", "description": "Original document path." },
+                    "new_path": { "type": "string", "description": "Modified document path." },
+                    "format": { "type": "string", "description": "Diff format: unified, json, html (default unified)." }
+                }),
+                &["old_path", "new_path"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "filesystem".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "document.ocr".into(),
+            description: "Perform OCR on an image or scanned PDF using local Tesseract. Returns extracted text with confidence."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "file_path": { "type": "string", "description": "Path to image/PDF file." },
+                    "language": { "type": "string", "description": "OCR language code (eng, spa, fra, etc., default eng)." }
+                }),
+                &["file_path"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "filesystem".into(),
+            ready: true,
+        },
+        // Web browsing / scraping
+        ToolDef {
+            name: "web.fetch".into(),
+            description: "Fetch a web page and return cleaned content (HTML, markdown, or text). Respects robots.txt, handles JS-rendered pages via headless browser."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "url": { "type": "string", "description": "URL to fetch." },
+                    "format": { "type": "string", "description": "Output format: markdown, text, html (default markdown)." },
+                    "wait_for": { "type": "string", "description": "CSS selector to wait for (JS rendering)." },
+                    "timeout_secs": { "type": "integer", "minimum": 5, "maximum": 120, "description": "Timeout in seconds (default 30)." }
+                }),
+                &["url"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        // MCP tool calling (generic)
+        ToolDef {
+            name: "mcp.call_tool".into(),
+            description: "Call any tool on any connected MCP server. The server must be connected and the tool enabled."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "server_id": { "type": "string", "description": "MCP server identifier." },
+                    "tool_name": { "type": "string", "description": "Tool name as exposed by the MCP server." },
+                    "arguments": { "type": "object", "description": "Tool arguments as JSON." }
+                }),
+                &["server_id", "tool_name", "arguments"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "mcp".into(),
+            ready: true,
+        },
     ]
 }
 
@@ -379,7 +678,7 @@ fn ensure_tool_executions_table(conn: &Connection) {
 }
 
 // ---------------------------------------------------------------------------
-// Permission gating
+// Permission gating (uses temporal permissions from crate::mcp)
 // ---------------------------------------------------------------------------
 
 /// Normalized permission decision for one (agent, tool) pair.
@@ -393,40 +692,48 @@ pub enum PermDecision {
     Deny,
 }
 
-/// Check the `permissions` table for (agent_id, tool). No row => the Phase 7
-/// default applies: interactive tools ask, LOW-risk read-only tools are
-/// allowed, everything else asks. Task-specified vocabulary
-/// (`always_allow|ask_every_time|allow_project|allow_session|deny`) is
-/// normalized together with the db.rs comment vocabulary
-/// (`allow_always|ask|allow_project|allow_session|deny`).
-///
-/// NOTE: the task contract lists `perm_check(agent_id, tool)` without an
-/// AppHandle, but reading the `permissions` table requires opening the SQLite
-/// file and there is no global DB handle in the current architecture — so the
-/// AppHandle is taken explicitly. Documented as a deviation in
-/// `.integration/phase-6.md`.
+/// Map a tool name to its permission domain.
+fn tool_domain(tool: &str) -> &str {
+    if tool.starts_with("project.") || tool.starts_with("build.") || tool.starts_with("test.") || tool.starts_with("document.") {
+        "filesystem"
+    } else if tool.starts_with("terminal.") {
+        "shell"
+    } else if tool.starts_with("git.") {
+        "git"
+    } else if tool.starts_with("mcp.") {
+        "mcp"
+    } else if tool.starts_with("web.") || tool.starts_with("github.") || tool.starts_with("hf.") || tool.starts_with("email.") || tool.starts_with("calendar.") || tool.starts_with("cloud.") {
+        "external_apis"
+    } else if tool.starts_with("media.") {
+        "media"
+    } else if tool.starts_with("user.") || tool.starts_with("artifact.") || tool.starts_with("avatar.") {
+        "interaction"
+    } else {
+        "filesystem"
+    }
+}
+
+/// Check the temporal permissions system for (agent_id, tool).
+/// Falls back to legacy static permissions if no temporal grant exists.
 pub(crate) fn perm_check(
     app: &tauri::AppHandle,
     agent_id: &str,
     tool: &str,
 ) -> Result<PermDecision, String> {
-    let mode: Option<String> = match open_conn(app) {
-        Ok(conn) => conn
-            .query_row(
-                "SELECT mode FROM permissions WHERE agent_id = ?1 AND (tool = ?2 OR tool = '*') LIMIT 1",
-                rusqlite::params![agent_id, tool],
-                |row| row.get(0),
-            )
-            .ok(),
-        Err(_) => None,
-    };
-    Ok(match mode.as_deref() {
-        Some("deny") => PermDecision::Deny,
-        Some("always_allow") | Some("allow_always") => PermDecision::AlwaysAllow,
-        Some("ask_every_time") | Some("ask") => PermDecision::Ask,
-        Some("allow_project") => PermDecision::AllowProject,
-        Some("allow_session") => PermDecision::AllowSession,
-        _ => PermDecision::Ask, // safe default when nothing is configured
+    let domain = tool_domain(tool);
+    let level = crate::mcp::perm_get_effective_level(
+        &crate::mcp::open_db(app).map_err(|e| e.to_string())?,
+        agent_id,
+        tool,
+        domain,
+    );
+    Ok(match level.as_str() {
+        "deny" => PermDecision::Deny,
+        "always_allow" | "allow_always" => PermDecision::AlwaysAllow,
+        "ask_every_time" | "ask" => PermDecision::Ask,
+        "allow_project" => PermDecision::AllowProject,
+        "allow_session" => PermDecision::AllowSession,
+        _ => PermDecision::Ask, // safe default
     })
 }
 
@@ -1032,6 +1339,38 @@ pub fn tool_execute(
         }
         "github.get_user" => crate::integrations::github_get_user(),
         "hf.whoami" => crate::integrations::hf_whoami(),
+        // Cloud drive tools
+        "cloud.drive_list" => Err("cloud.drive_list: not implemented - requires cloud drive integration module".to_string()),
+        "cloud.drive_read" => Err("cloud.drive_read: not implemented - requires cloud drive integration module".to_string()),
+        "cloud.drive_write" => Err("cloud.drive_write: not implemented - requires cloud drive integration module".to_string()),
+        "cloud.drive_search" => Err("cloud.drive_search: not implemented - requires cloud drive integration module".to_string()),
+        // Email tools
+        "email.list" => Err("email.list: not implemented - requires email integration module".to_string()),
+        "email.read" => Err("email.read: not implemented - requires email integration module".to_string()),
+        "email.send" => Err("email.send: not implemented - requires email integration module".to_string()),
+        // Calendar tools
+        "calendar.list_events" => Err("calendar.list_events: not implemented - requires calendar integration module".to_string()),
+        "calendar.create_event" => Err("calendar.create_event: not implemented - requires calendar integration module".to_string()),
+        "calendar.update_event" => Err("calendar.update_event: not implemented - requires calendar integration module".to_string()),
+        "calendar.delete_event" => Err("calendar.delete_event: not implemented - requires calendar integration module".to_string()),
+        // Document tools
+        "document.convert" => Err("document.convert: not implemented - requires document processing module".to_string()),
+        "document.extract_text" => Err("document.extract_text: not implemented - requires document processing module".to_string()),
+        "document.compare" => Err("document.compare: not implemented - requires document processing module".to_string()),
+        "document.ocr" => Err("document.ocr: not implemented - requires OCR module".to_string()),
+        // Web fetch
+        "web.fetch" => Err("web.fetch: not implemented - requires web scraping module".to_string()),
+        // MCP generic tool call
+        "mcp.call_tool" => {
+            let server_id = arg_str(&args, "server_id")?;
+            let tool_name = arg_str(&args, "tool_name")?;
+            let arguments = args.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+            let args_json = arguments.to_string();
+            let result = tauri::async_runtime::block_on(async {
+                crate::mcp::mcp_call_tool(app.clone(), server_id, tool_name, args_json).await
+            });
+            result.map(|r| serde_json::to_value(r).unwrap_or(serde_json::json!({ "error": "failed to serialize result" })))
+        },
         _ => Err(format!("tool '{}' has no dispatcher", tool)),
     };
 

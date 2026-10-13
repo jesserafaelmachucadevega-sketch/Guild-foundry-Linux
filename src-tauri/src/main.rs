@@ -236,6 +236,11 @@ fn main() {
             mcp::perm_get,
             mcp::perm_set,
             mcp::perm_list,
+            mcp::perm_grant,
+            mcp::perm_revoke,
+            mcp::perm_list_grants,
+            mcp::perm_get_effective,
+            mcp::perm_cleanup_expired,
             // Phase 8 — build/test/fix engine
             build::build_start,
             build::build_status,

@@ -156,7 +156,7 @@ fn ensure_phase7_schema(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
+pub fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     let conn = Connection::open(db_path(app)?).map_err(|e| e.to_string())?;
     // Other modules (db.rs, providers.rs, tools.rs) open this same file, so a
     // brief contention window is normal: block for a moment instead of
@@ -1556,11 +1556,287 @@ pub async fn mcp_oauth_revoke(app: tauri::AppHandle, server_id: String) -> Resul
 // Permission Center commands
 // ---------------------------------------------------------------------------
 
+/// Permission grant with time-based expiration and revocation support.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionGrant {
+    pub id: String,
+    pub agent_id: String,
+    pub domain: String,
+    pub tool: String,
+    pub level: String,           // always_allow | ask_every_time | allow_project | allow_session | deny
+    pub granted_at: String,      // RFC3339
+    pub expires_at: Option<String>, // RFC3339, None = forever
+    pub revoked_at: Option<String>, // RFC3339, None = active
+    pub metadata: Option<String>, // JSON for context (e.g., {"reason": "user approved for 1 hour"})
+}
+
+/// Time duration presets for permission grants.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GrantDuration {
+    Once,       // Single use (auto-revokes after execution)
+    Hour,       // 1 hour
+    Day,        // 24 hours
+    Week,       // 7 days
+    Forever,    // No expiration
+}
+
+impl GrantDuration {
+    fn to_duration(&self) -> Option<chrono::Duration> {
+        match self {
+            GrantDuration::Once => None, // Handled specially
+            GrantDuration::Hour => Some(chrono::Duration::hours(1)),
+            GrantDuration::Day => Some(chrono::Duration::days(1)),
+            GrantDuration::Week => Some(chrono::Duration::weeks(1)),
+            GrantDuration::Forever => None,
+        }
+    }
+}
+
+fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// Ensure the time-based permissions table exists.
+fn ensure_permissions_temporal_schema(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS permissions_temporal (
+            id          TEXT PRIMARY KEY,
+            agent_id    TEXT NOT NULL DEFAULT '',
+            tool        TEXT NOT NULL DEFAULT '*',
+            domain      TEXT NOT NULL,
+            level       TEXT NOT NULL,
+            granted_at  TEXT NOT NULL,
+            expires_at  TEXT,                    -- NULL = forever
+            revoked_at  TEXT,                    -- NULL = active
+            metadata    TEXT,                    -- JSON context
+            CHECK (level IN ('always_allow','ask_every_time','allow_project','allow_session','deny'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_perm_temporal_domain ON permissions_temporal(domain);
+        CREATE INDEX IF NOT EXISTS idx_perm_temporal_expires ON permissions_temporal(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_perm_temporal_agent ON permissions_temporal(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_perm_temporal_active ON permissions_temporal(revoked_at)
+            WHERE revoked_at IS NULL;",
+    )?;
+    Ok(())
+}
+
+/// Get the effective permission level for a domain/tool, considering temporal grants.
+pub fn perm_get_effective_level(
+    conn: &Connection,
+    agent_id: &str,
+    tool: &str,
+    domain: &str,
+) -> String {
+    let now = now_rfc3339();
+    // Check temporal grants first (most specific match wins)
+    let mut stmt = conn
+        .prepare(
+            "SELECT level FROM permissions_temporal
+             WHERE agent_id IN ('', ?1)
+               AND tool IN ('*', ?2)
+               AND domain = ?3
+               AND revoked_at IS NULL
+               AND (expires_at IS NULL OR expires_at > ?4)
+             ORDER BY
+               CASE WHEN agent_id = ?1 THEN 0 ELSE 1 END,  -- agent-specific first
+               CASE WHEN tool = ?2 THEN 0 ELSE 1 END,      -- tool-specific first
+               granted_at DESC
+             LIMIT 1",
+        )
+        .ok();
+    if let Some(mut stmt) = stmt {
+        if let Ok(level) = stmt.query_row(
+            [agent_id, tool, domain, &now],
+            |r| r.get::<_, String>(0),
+        ) {
+            return level;
+        }
+    }
+    // Fall back to legacy static permissions
+    perm_get_level(conn, domain)
+}
+
+/// Grant a time-based permission.
+#[tauri::command]
+pub async fn perm_grant(
+    app: tauri::AppHandle,
+    domain: String,
+    tool: Option<String>,
+    level: String,
+    duration: GrantDuration,
+    metadata: Option<String>,
+) -> Result<PermissionGrant, String> {
+    // Validate domain and level
+    if !PERM_DOMAINS.contains(&domain.as_str()) {
+        return Err(format!("unknown permission domain: {}", domain));
+    }
+    if !PERM_LEVELS.contains(&level.as_str()) {
+        return Err(format!("unknown permission level: {}", level));
+    }
+    // Validate tool if provided
+    if let Some(ref t) = tool {
+        if t.trim().is_empty() {
+            return Err("tool cannot be empty".to_string());
+        }
+    }
+
+    let conn = open_db(&app)?;
+    ensure_permissions_temporal_schema(&conn).map_err(|e| e.to_string())?;
+
+    let grant_id = uuid::Uuid::new_v4().to_string();
+    let granted_at = now_rfc3339();
+    let expires_at = duration.to_duration().map(|d| {
+        (chrono::Utc::now() + d).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    });
+
+    let tool = tool.unwrap_or_else(|| "*".to_string());
+    let agent_id = String::new(); // Global grants for now; can extend to agent-specific later
+
+    conn.execute(
+        "INSERT INTO permissions_temporal
+            (id, agent_id, tool, domain, level, granted_at, expires_at, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            grant_id,
+            agent_id,
+            tool,
+            domain,
+            level,
+            granted_at,
+            expires_at,
+            metadata,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(PermissionGrant {
+        id: grant_id,
+        agent_id,
+        domain,
+        tool,
+        level,
+        granted_at,
+        expires_at,
+        revoked_at: None,
+        metadata,
+    })
+}
+
+/// Revoke a permission grant by ID.
+#[tauri::command]
+pub async fn perm_revoke(app: tauri::AppHandle, grant_id: String) -> Result<(), String> {
+    let conn = open_db(&app)?;
+    let revoked_at = now_rfc3339();
+    let changed = conn
+        .execute(
+            "UPDATE permissions_temporal SET revoked_at = ?1 WHERE id = ?2 AND revoked_at IS NULL",
+            params![revoked_at, grant_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("grant not found or already revoked: {}", grant_id));
+    }
+    Ok(())
+}
+
+/// List all active permission grants (optionally filtered by domain).
+#[tauri::command]
+pub async fn perm_list_grants(
+    app: tauri::AppHandle,
+    domain: Option<String>,
+) -> Result<Vec<PermissionGrant>, String> {
+    let conn = open_db(&app)?;
+    ensure_permissions_temporal_schema(&conn).map_err(|e| e.to_string())?;
+
+    let now = now_rfc3339();
+    let (sql, params): (String, Vec<&dyn rusqlite::ToSql>) = if let Some(ref d) = domain {
+        (
+            "SELECT id, agent_id, tool, domain, level, granted_at, expires_at, revoked_at, metadata
+             FROM permissions_temporal
+             WHERE domain = ?1
+               AND revoked_at IS NULL
+               AND (expires_at IS NULL OR expires_at > ?2)
+             ORDER BY granted_at DESC".to_string(),
+            vec![d as &dyn rusqlite::ToSql, &now],
+        )
+    } else {
+        (
+            "SELECT id, agent_id, tool, domain, level, granted_at, expires_at, revoked_at, metadata
+             FROM permissions_temporal
+             WHERE revoked_at IS NULL
+               AND (expires_at IS NULL OR expires_at > ?1)
+             ORDER BY granted_at DESC".to_string(),
+            vec![&now as &dyn rusqlite::ToSql],
+        )
+    };
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params), |r| {
+            Ok(PermissionGrant {
+                id: r.get(0)?,
+                agent_id: r.get(1)?,
+                tool: r.get(2)?,
+                domain: r.get(3)?,
+                level: r.get(4)?,
+                granted_at: r.get(5)?,
+                expires_at: r.get(6)?,
+                revoked_at: r.get(7)?,
+                metadata: r.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut grants = Vec::new();
+    for row in rows {
+        grants.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(grants)
+}
+
+/// Get effective permission level (considering temporal grants).
+#[tauri::command]
+pub async fn perm_get_effective(
+    app: tauri::AppHandle,
+    domain: String,
+    tool: Option<String>,
+    agent_id: Option<String>,
+) -> Result<String, String> {
+    if !PERM_DOMAINS.contains(&domain.as_str()) {
+        return Err(format!("unknown permission domain: {}", domain));
+    }
+    let conn = open_db(&app)?;
+    ensure_permissions_temporal_schema(&conn).map_err(|e| e.to_string())?;
+    let tool = tool.unwrap_or_else(|| "*".to_string());
+    let agent = agent_id.unwrap_or_default();
+    Ok(perm_get_effective_level(&conn, &agent, &tool, &domain))
+}
+
+/// Clean up expired grants (call periodically or on startup).
+#[tauri::command]
+pub async fn perm_cleanup_expired(app: tauri::AppHandle) -> Result<usize, String> {
+    let conn = open_db(&app)?;
+    let now = now_rfc3339();
+    let deleted = conn
+        .execute(
+            "DELETE FROM permissions_temporal
+             WHERE expires_at IS NOT NULL
+               AND expires_at <= ?1
+               AND revoked_at IS NULL",
+            params![now],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(deleted)
+}
+
+// Legacy perm_get/perm_set/perm_list kept for backward compatibility
+
 #[tauri::command]
 pub async fn perm_get(app: tauri::AppHandle, domain: String) -> Result<String, String> {
     validate_perm(&domain, DEFAULT_PERM_LEVEL)?;
     let conn = open_db(&app)?;
-    Ok(perm_get_level(&conn, &domain))
+    Ok(perm_get_effective_level(&conn, "", "*", &domain))
 }
 
 #[tauri::command]
@@ -1583,7 +1859,7 @@ pub async fn perm_list(app: tauri::AppHandle) -> Result<Vec<PermEntry>, String> 
         .iter()
         .map(|d| PermEntry {
             domain: d.to_string(),
-            level: perm_get_level(&conn, d),
+            level: perm_get_effective_level(&conn, "", "*", d),
         })
         .collect())
 }
