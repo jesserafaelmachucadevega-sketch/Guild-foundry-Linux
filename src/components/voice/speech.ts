@@ -32,6 +32,45 @@ export async function setSpeechEnabled(on: boolean): Promise<void> {
   if (!on) stopSpeech();
 }
 
+/** Convert a recorded blob to 16 kHz mono Float32 (whisper's input format). */
+async function blobToPcm16k(blob: Blob): Promise<Float32Array> {
+  const arrayBuf = await blob.arrayBuffer();
+  const ctx = new AudioContext();
+  try {
+    const decoded = await ctx.decodeAudioData(arrayBuf);
+    const targetRate = 16000;
+    const length = Math.max(1, Math.ceil(decoded.duration * targetRate));
+    const offline = new OfflineAudioContext(1, length, targetRate);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start();
+    const rendered = await offline.startRendering();
+    return rendered.getChannelData(0);
+  } finally {
+    void ctx.close();
+  }
+}
+
+function float32ToBase64(pcm: Float32Array): string {
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function localSttAvailable(): Promise<boolean> {
+  try {
+    const st = await invoke<{ whisper_available?: boolean }>('media_local_voice_status');
+    return !!st?.whisper_available;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Speak text with the Kokoro voice (natural human speech, not the browser
  * voice). Returns when playback finishes. Any in-flight speech is stopped.
@@ -69,22 +108,32 @@ export async function startMicRecording(): Promise<{ stop: () => Promise<string>
     rec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
-      const reader = new FileReader();
-      reader.onloadend = async () => {
+      void (async () => {
         try {
-          const base64 = (reader.result as string).split(',')[1] ?? '';
-          if (!base64) throw new Error('empty recording — no audio captured');
-          const text = await invoke<string>('media_transcribe_mic', {
-            audio_base64: base64,
-            content_type: blob.type || 'audio/webm',
+          if (!blob.size) throw new Error('empty recording — no audio captured');
+          // Local-first: a configured Whisper model transcribes fully offline.
+          if (await localSttAvailable()) {
+            const pcm = await blobToPcm16k(blob);
+            resolve(await invoke<string>('media_transcribe_pcm', { data_b64: float32ToBase64(pcm) }));
+            return;
+          }
+          const base64 = await new Promise<string>((res, rej) => {
+            const reader = new FileReader();
+            reader.onloadend = () => res((reader.result as string).split(',')[1] ?? '');
+            reader.onerror = () => rej(new Error('failed to read recording'));
+            reader.readAsDataURL(blob);
           });
-          resolve(text);
+          if (!base64) throw new Error('empty recording — no audio captured');
+          resolve(
+            await invoke<string>('media_transcribe_mic', {
+              audio_base64: base64,
+              content_type: blob.type || 'audio/webm',
+            }),
+          );
         } catch (e) {
           reject(e);
         }
-      };
-      reader.onerror = () => reject(new Error('failed to read recording'));
-      reader.readAsDataURL(blob);
+      })();
     };
     rec.onerror = () => reject(new Error('recording failed'));
   });

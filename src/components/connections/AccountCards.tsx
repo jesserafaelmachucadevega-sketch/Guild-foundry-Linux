@@ -501,6 +501,94 @@ function PhoneCard({ onToast }: { onToast: (msg: string) => void }): React.React
   );
 }
 
+interface LocalVoiceStatus {
+  whisper_available: boolean;
+  whisper_model: string | null;
+  kokoro_available: boolean;
+  kokoro_note: string;
+  engine: string;
+}
+
+function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [status, setStatus] = useState<LocalVoiceStatus | null>(null);
+  const [modelPath, setModelPath] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async (): Promise<void> => {
+    try {
+      const st = await invoke<LocalVoiceStatus>('media_local_voice_status');
+      setStatus(st);
+      setModelPath(st.whisper_model ?? '');
+    } catch {
+      setStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async (): Promise<void> => {
+    if (!modelPath.trim()) {
+      onToast('Enter the path to a whisper.cpp ggml model first');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('media_local_set_model', { kind: 'whisper', path: modelPath.trim() });
+      onToast('Local Whisper model set — the mic now transcribes offline');
+      await refresh();
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Local voice (offline)</strong>
+        {status?.whisper_available ? (
+          <span className="conn-badge conn-badge-ok">Whisper ready</span>
+        ) : (
+          <span className="conn-badge">No model yet</span>
+        )}
+      </div>
+      <p className="conn-tagline">
+        Speech-to-text runs fully offline with a whisper.cpp model — no cloud call, no API key.
+      </p>
+      <p className="conn-note">
+        Point this at any whisper.cpp ggml model (for example <code>ggml-base.en.bin</code> or{' '}
+        <code>ggml-small.bin</code>). Drop it in <code>app-data/models/whisper/whisper-model.bin</code> or paste a full
+        path below. The mic prefers this model whenever it is available; otherwise it falls back to the cloud service.
+      </p>
+      <label className="gf-label" style={labelStyle}>
+        Whisper model file
+        <input
+          className="gf-input"
+          value={modelPath}
+          onChange={(e) => setModelPath(e.target.value)}
+          placeholder="/path/to/ggml-base.en.bin"
+        />
+      </label>
+      <div className="gf-row" style={{ marginTop: 8 }}>
+        <button className="gf-btn gf-btn-sm" onClick={() => void save()} disabled={busy}>
+          Save
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void refresh()} disabled={busy}>
+          Refresh
+        </button>
+      </div>
+      <p className="conn-note" title={status?.kokoro_note}>
+        {status?.kokoro_note ??
+          'Local speech output (Kokoro ONNX) needs the ONNX runtime, espeak-ng, and the Kokoro model files; cloud TTS stays active until then.'}
+      </p>
+    </div>
+  );
+}
+
 export function AccountCards({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   return (
     <>
@@ -509,6 +597,7 @@ export function AccountCards({ onToast }: { onToast: (msg: string) => void }): R
         <EmailCard onToast={onToast} />
         <CalendarCard onToast={onToast} />
         <PhoneCard onToast={onToast} />
+        <LocalVoiceCard onToast={onToast} />
       </div>
     </>
   );

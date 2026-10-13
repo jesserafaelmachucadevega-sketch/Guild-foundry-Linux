@@ -44,6 +44,7 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "h
 mail-parser = "0.11"
 llama-cpp-2 = "0.1"
 encoding_rs = "0.8"
+whisper-rs = "0.16"
 
 [features]
 default = ["custom-protocol"]

@@ -20,6 +20,7 @@ mod gguf;
 mod harness;
 mod index;
 mod integrations;
+mod localvoice;
 mod mcp;
 mod media;
 mod memory;
@@ -232,6 +233,9 @@ fn main() {
             gguf::gguf_load,
             gguf::gguf_unload,
             gguf::gguf_set_ctx,
+            localvoice::media_transcribe_pcm,
+            localvoice::media_local_voice_status,
+            localvoice::media_local_set_model,
             // Phase 7 — MCP gateway + permissions
             mcp::mcp_server_add,
             mcp::mcp_server_update,
