@@ -30,6 +30,23 @@ function csvToList(s: string): string[] {
   return s.split(',').map((x) => x.trim()).filter((x) => x.length > 0);
 }
 
+function pairsToMap(s: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of s.split('\n')) {
+    const i = line.indexOf('=');
+    if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return out;
+}
+
+const STDIO_PRESETS = [
+  { name: 'Filesystem (official)', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/home'] },
+  { name: 'Memory (official)', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] },
+  { name: 'Sequential thinking (official)', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] },
+  { name: 'Everything demo (official)', command: 'npx', args: ['-y', '@modelcontextprotocol/server-everything'] },
+  { name: 'Postgres (official)', command: 'npx', args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://user:pass@localhost:5432/db'] },
+];
+
 const EMPTY_FORM: McpServerInput & { bearer_token: string } = {
   name: '',
   transport: 'streamable_http',
@@ -44,18 +61,26 @@ const EMPTY_FORM: McpServerInput & { bearer_token: string } = {
   denied_tools: [],
   bearer_present: false,
   bearer_token: '',
+  command: '',
+  args: [],
+  env: {},
+  headers: {},
 };
 
 function viewToForm(v: McpServerView): McpServerInput & { bearer_token: string } {
   return {
     ...EMPTY_FORM,
     name: v.name,
-    transport: (v.transport === 'sse' ? 'sse' : 'streamable_http') as McpTransport,
+    transport: (v.transport === 'sse' ? 'sse' : v.transport === 'stdio' ? 'stdio' : 'streamable_http') as McpTransport,
     url: v.url,
     auth_type: (['none', 'bearer', 'oauth'].includes(v.auth_type) ? v.auth_type : 'none') as McpAuthType,
     allowed_tools: v.allowed_tools,
     denied_tools: v.denied_tools,
     bearer_present: v.bearer_present,
+    command: v.command ?? '',
+    args: v.args ?? [],
+    env: v.env ?? {},
+    headers: v.headers ?? {},
   };
 }
 
@@ -131,6 +156,10 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
       oauth_token_url: form.oauth_token_url || '',
       oauth_scopes: form.oauth_scopes || '',
       oauth_redirect_uri: form.oauth_redirect_uri || '',
+      command: form.command || '',
+      args: form.args ?? [],
+      env: form.env ?? {},
+      headers: form.headers ?? {},
       allowed_tools: form.allowed_tools ?? [],
       denied_tools: form.denied_tools ?? [],
       bearer_present: (form.bearer_token?.length ?? 0) > 0 || form.bearer_present === true,
@@ -484,6 +513,31 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
             <div className="mcp-modal-backdrop" onClick={() => setFormOpen(false)}>
               <div className="mcp-modal" onClick={(e) => e.stopPropagation()}>
                 <h3 className="mcp-subtitle">{editingId ? 'Edit server' : 'Add server'}</h3>
+                {!editingId && (
+                  <div className="mcp-field">
+                    <span>Quick add — local (stdio) servers, run by this machine</span>
+                    <div className="gf-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      {STDIO_PRESETS.map((p) => (
+                        <button
+                          key={p.name}
+                          type="button"
+                          className="gf-btn"
+                          onClick={() =>
+                            setForm({
+                              ...EMPTY_FORM,
+                              name: p.name,
+                              transport: 'stdio',
+                              command: p.command,
+                              args: p.args,
+                            })
+                          }
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <label className="mcp-field">
                   <span>Name</span>
                   <input className="gf-input" value={form.name} onChange={(e) => set('name', e.target.value)} />
@@ -497,17 +551,69 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
                   >
                     <option value="streamable_http">Streamable HTTP</option>
                     <option value="sse">Legacy HTTP+SSE</option>
+                    <option value="stdio">Local process (stdio)</option>
                   </select>
                 </label>
-                <label className="mcp-field">
-                  <span>URL</span>
-                  <input
-                    className="gf-input mcp-mono"
-                    placeholder="https://example.com/mcp"
-                    value={form.url}
-                    onChange={(e) => set('url', e.target.value)}
-                  />
-                </label>
+                {form.transport === 'stdio' ? (
+                  <>
+                    <label className="mcp-field">
+                      <span>Command</span>
+                      <input
+                        className="gf-input mcp-mono"
+                        placeholder="npx"
+                        value={form.command ?? ''}
+                        onChange={(e) => set('command', e.target.value)}
+                      />
+                    </label>
+                    <label className="mcp-field">
+                      <span>Arguments (one per line)</span>
+                      <textarea
+                        className="gf-textarea mcp-mono mcp-small"
+                        rows={4}
+                        value={(form.args ?? []).join('\n')}
+                        onChange={(e) =>
+                          set(
+                            'args',
+                            e.target.value
+                              .split('\n')
+                              .map((x) => x.trim())
+                              .filter((x) => x.length > 0),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="mcp-field">
+                      <span>Environment variables (KEY=VALUE per line, optional)</span>
+                      <textarea
+                        className="gf-textarea mcp-mono mcp-small"
+                        rows={3}
+                        value={Object.entries(form.env ?? {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+                        onChange={(e) => set('env', pairsToMap(e.target.value))}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="mcp-field">
+                      <span>URL</span>
+                      <input
+                        className="gf-input mcp-mono"
+                        placeholder="https://example.com/mcp"
+                        value={form.url}
+                        onChange={(e) => set('url', e.target.value)}
+                      />
+                    </label>
+                    <label className="mcp-field">
+                      <span>Custom headers (KEY=VALUE per line, optional — stored in the app database; prefer the bearer field for secrets)</span>
+                      <textarea
+                        className="gf-textarea mcp-mono mcp-small"
+                        rows={3}
+                        value={Object.entries(form.headers ?? {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+                        onChange={(e) => set('headers', pairsToMap(e.target.value))}
+                      />
+                    </label>
+                  </>
+                )}
                 <label className="mcp-field">
                   <span>Authentication</span>
                   <select

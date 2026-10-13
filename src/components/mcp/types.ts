@@ -2,7 +2,7 @@
 // Phase 7 — Phase-local types for the MCP gateway + permission center UI.
 // These mirror the serde shapes returned by src-tauri/src/mcp.rs (snake_case).
 
-export type McpTransport = 'streamable_http' | 'sse';
+export type McpTransport = 'streamable_http' | 'sse' | 'stdio';
 export type McpAuthType = 'none' | 'bearer' | 'oauth';
 
 export interface McpServerView {
@@ -18,6 +18,10 @@ export interface McpServerView {
   allowed_tools: string[];
   denied_tools: string[];
   tool_count: number;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  headers: Record<string, string>;
 }
 
 export interface McpServerInput {
@@ -33,6 +37,14 @@ export interface McpServerInput {
   allowed_tools?: string[];
   denied_tools?: string[];
   bearer_present?: boolean;
+  /** stdio transport: executable to launch (e.g. "npx"). */
+  command?: string;
+  /** stdio transport: arguments for the command. */
+  args?: string[];
+  /** stdio transport: extra environment variables. */
+  env?: Record<string, string>;
+  /** HTTP transports: extra headers sent with every request. */
+  headers?: Record<string, string>;
 }
 
 export interface McpToolInfo {

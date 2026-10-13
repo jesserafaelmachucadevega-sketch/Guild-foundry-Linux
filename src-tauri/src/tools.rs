@@ -1725,6 +1725,10 @@ pub fn tool_execute(
             executed_at: chrono::Utc::now().to_rfc3339(),
         },
     };
+    // One-shot permission grants are consumed by their first success.
+    if result.ok {
+        crate::mcp::perm_consume_once(&app, &agent_id, &tool, tool_domain(&tool));
+    }
     if let Ok(conn) = open_conn(&app) {
         log_execution(
             &conn,

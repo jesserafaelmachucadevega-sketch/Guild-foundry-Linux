@@ -99,7 +99,7 @@ fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// unused by db.rs/build.rs (they use `schema_migrations`), so it is free to
 /// use here as a cheap "tables already exist" marker: without it every open
 /// re-ran four `execute_batch` statements.
-const PHASE7_SCHEMA_VERSION: i64 = 1;
+const PHASE7_SCHEMA_VERSION: i64 = 2;
 
 fn ensure_phase7_schema(conn: &Connection) -> Result<(), String> {
     let version: i64 = conn
@@ -119,7 +119,11 @@ fn ensure_phase7_schema(conn: &Connection) -> Result<(), String> {
             oauth_redirect_uri      TEXT NOT NULL DEFAULT '',
             allowed_tools           TEXT NOT NULL DEFAULT '[]',
             denied_tools            TEXT NOT NULL DEFAULT '[]',
-            bearer_present          INTEGER NOT NULL DEFAULT 0
+            bearer_present          INTEGER NOT NULL DEFAULT 0,
+            command                 TEXT NOT NULL DEFAULT '',
+            args                    TEXT NOT NULL DEFAULT '[]',
+            env                     TEXT NOT NULL DEFAULT '{}',
+            headers                 TEXT NOT NULL DEFAULT '{}'
         );
         CREATE TABLE IF NOT EXISTS mcp_tool_meta (
             tool_name               TEXT PRIMARY KEY,
@@ -154,6 +158,24 @@ fn ensure_phase7_schema(conn: &Connection) -> Result<(), String> {
     }
     conn.execute_batch(&format!("PRAGMA user_version = {};", PHASE7_SCHEMA_VERSION))
         .map_err(|e| e.to_string())?;
+    // stdio transport + custom headers columns (v2, additive).
+    for (col, ddl) in [
+        ("command", "ALTER TABLE mcp_server_meta ADD COLUMN command TEXT NOT NULL DEFAULT '';"),
+        ("args", "ALTER TABLE mcp_server_meta ADD COLUMN args TEXT NOT NULL DEFAULT '[]';"),
+        ("env", "ALTER TABLE mcp_server_meta ADD COLUMN env TEXT NOT NULL DEFAULT '{}';"),
+        ("headers", "ALTER TABLE mcp_server_meta ADD COLUMN headers TEXT NOT NULL DEFAULT '{}';"),
+    ] {
+        let has: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('mcp_server_meta') WHERE name = ?1",
+                [col],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if has == 0 {
+            conn.execute_batch(ddl).map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -262,6 +284,20 @@ struct ServerMeta {
     oauth_redirect_uri: String,
     allowed_tools: Vec<String>,
     denied_tools: Vec<String>,
+    command: String,
+    args: Vec<String>,
+    env: Vec<(String, String)>,
+    headers: Vec<(String, String)>,
+}
+
+fn string_map_to_pairs(raw: &str) -> Vec<(String, String)> {
+    serde_json::from_str::<std::collections::HashMap<String, String>>(raw)
+        .map(|m| {
+            let mut v: Vec<(String, String)> = m.into_iter().collect();
+            v.sort();
+            v
+        })
+        .unwrap_or_default()
 }
 
 /// True when this server has a bearer credential stored in the keyring.
@@ -290,14 +326,19 @@ fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, Se
     let meta = match conn
         .query_row(
             "SELECT auth_type, oauth_client_id, oauth_authorization_url, oauth_token_url,
-                    oauth_scopes, oauth_redirect_uri, allowed_tools, denied_tools
+                    oauth_scopes, oauth_redirect_uri, allowed_tools, denied_tools,
+                    COALESCE(command,''), COALESCE(args,'[]'), COALESCE(env,'{}'), COALESCE(headers,'{}')
              FROM mcp_server_meta WHERE server_id = ?1",
             [server_id],
             |r| {
                 let allowed: String = r.get(6)?;
                 let denied: String = r.get(7)?;
+                let args_raw: String = r.get(9)?;
+                let env_raw: String = r.get(10)?;
+                let headers_raw: String = r.get(11)?;
                 let allowed_tools = json_string_list(&allowed).map_err(sql_err)?;
                 let denied_tools = json_string_list(&denied).map_err(sql_err)?;
+                let args = json_string_list(&args_raw).map_err(sql_err)?;
                 Ok(ServerMeta {
                     auth_type: r.get(0)?,
                     oauth_client_id: r.get(1)?,
@@ -307,6 +348,10 @@ fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, Se
                     oauth_redirect_uri: r.get(5)?,
                     allowed_tools,
                     denied_tools,
+                    command: r.get(8)?,
+                    args,
+                    env: string_map_to_pairs(&env_raw),
+                    headers: string_map_to_pairs(&headers_raw),
                 })
             },
         ) {
@@ -320,6 +365,10 @@ fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, Se
             oauth_redirect_uri: String::new(),
             allowed_tools: Vec::new(),
             denied_tools: Vec::new(),
+            command: String::new(),
+            args: Vec::new(),
+            env: Vec::new(),
+            headers: Vec::new(),
         },
         Err(e) => {
             return Err(format!(
@@ -340,10 +389,14 @@ fn validate_server_input(input: &McpServerInput) -> Result<(), String> {
     if input.name.trim().is_empty() {
         return Err("server name is required".to_string());
     }
-    if !matches!(input.transport.as_str(), "streamable_http" | "sse") {
-        return Err("transport must be streamable_http or sse".to_string());
+    if !matches!(input.transport.as_str(), "streamable_http" | "sse" | "stdio") {
+        return Err("transport must be streamable_http, sse, or stdio".to_string());
     }
-    if !(input.url.starts_with("http://") || input.url.starts_with("https://")) {
+    if input.transport == "stdio" {
+        if input.command.as_deref().unwrap_or("").trim().is_empty() {
+            return Err("stdio servers need a command to run (e.g. npx)".to_string());
+        }
+    } else if !(input.url.starts_with("http://") || input.url.starts_with("https://")) {
         return Err("url must start with http:// or https://".to_string());
     }
     if !matches!(input.auth_type.as_str(), "none" | "bearer" | "oauth") {
@@ -379,17 +432,113 @@ fn validate_perm(domain: &str, level: &str) -> Result<(), String> {
 // MCP wire client: JSON-RPC 2.0 over Streamable HTTP or legacy HTTP+SSE
 // ---------------------------------------------------------------------------
 
+struct StdioSession {
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    rx: std::sync::Mutex<std::sync::mpsc::Receiver<Value>>,
+}
+
+impl StdioSession {
+    fn spawn(command: &str, args: &[String], env: &[(String, String)]) -> Result<Self, String> {
+        use std::io::{BufRead, BufReader};
+        let mut cmd = std::process::Command::new(command);
+        cmd.args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let mut child = cmd.spawn().map_err(|e| {
+            format!(
+                "failed to start '{}': {} (is it installed and on PATH?)",
+                command, e
+            )
+        })?;
+        let stdin = child.stdin.take().ok_or("failed to open server stdin")?;
+        let stdout = child.stdout.take().ok_or("failed to open server stdout")?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) if !l.trim().is_empty() => {
+                        // Servers sometimes print banners; only JSON lines count.
+                        if let Ok(v) = serde_json::from_str::<Value>(&l) {
+                            let _ = tx.send(v);
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+        });
+        Ok(Self {
+            child,
+            stdin,
+            rx: std::sync::Mutex::new(rx),
+        })
+    }
+
+    fn write_line(&mut self, payload: &Value) -> Result<(), String> {
+        use std::io::Write;
+        let mut line = payload.to_string();
+        line.push('\n');
+        self.stdin
+            .write_all(line.as_bytes())
+            .map_err(|e| format!("failed to write to the MCP server: {}", e))?;
+        self.stdin.flush().map_err(|e| e.to_string())
+    }
+
+    fn read_until(&self, want_id: u64, timeout: Duration) -> Result<Value, String> {
+        let deadline = std::time::Instant::now() + timeout;
+        let rx = self.rx.lock().map_err(|e| e.to_string())?;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err("timed out waiting for the MCP server response".to_string());
+            }
+            match rx.recv_timeout(remaining) {
+                Ok(v) => {
+                    if v.get("id").and_then(|i| i.as_u64()) == Some(want_id) {
+                        return Ok(v);
+                    }
+                }
+                Err(_) => {
+                    return Err(
+                        "the MCP server closed its output before responding".to_string()
+                    )
+                }
+            }
+        }
+    }
+}
+
+impl Drop for StdioSession {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 struct McpClient {
     http: reqwest::Client,
     url: String,
     transport: String,
     bearer: Option<String>,
+    headers: Vec<(String, String)>,
     session_id: Option<String>,
     next_id: u64,
+    stdio: Option<StdioSession>,
 }
 
 impl McpClient {
-    fn new(url: String, transport: String, bearer: Option<String>) -> Result<Self, String> {
+    fn new(
+        url: String,
+        transport: String,
+        bearer: Option<String>,
+        headers: Vec<(String, String)>,
+    ) -> Result<Self, String> {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -399,16 +548,45 @@ impl McpClient {
             url,
             transport,
             bearer,
+            headers,
             session_id: None,
             next_id: 0,
+            stdio: None,
         })
     }
 
-    fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.bearer {
-            Some(t) => req.bearer_auth(t),
-            None => req,
+    /// stdio transport: the server is a local process speaking JSON-RPC over
+    /// stdin/stdout (one JSON message per line).
+    fn new_stdio(
+        command: &str,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+        headers: Vec<(String, String)>,
+    ) -> Result<Self, String> {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(Self {
+            http,
+            url: String::new(),
+            transport: "stdio".to_string(),
+            bearer: None,
+            headers,
+            session_id: None,
+            next_id: 0,
+            stdio: Some(StdioSession::spawn(command, &args, &env)?),
+        })
+    }
+
+    fn apply_auth(&self, mut req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(t) = &self.bearer {
+            req = req.bearer_auth(t);
         }
+        for (k, v) in &self.headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+        req
     }
 
     /// Full request/response JSON-RPC call. Returns the `result` value.
@@ -416,6 +594,17 @@ impl McpClient {
         self.next_id += 1;
         let id = self.next_id;
         let payload = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        if let Some(stdio) = self.stdio.as_mut() {
+            stdio.write_line(&payload)?;
+            let raw = stdio.read_until(id, Duration::from_secs(60))?;
+            if let Some(err) = raw.get("error") {
+                return Err(format!("MCP error: {}", err));
+            }
+            return raw
+                .get("result")
+                .cloned()
+                .ok_or_else(|| "MCP response had no result".to_string());
+        }
         let raw = if self.transport == "sse" {
             self.rpc_legacy_sse(&payload, id, true)
                 .await?
@@ -434,6 +623,10 @@ impl McpClient {
     /// JSON-RPC notification (no id, no response expected).
     async fn notify(&mut self, method: &str, params: Value) -> Result<(), String> {
         let payload = json!({ "jsonrpc": "2.0", "method": method, "params": params });
+        if let Some(stdio) = self.stdio.as_mut() {
+            stdio.write_line(&payload)?;
+            return Ok(());
+        }
         if self.transport == "sse" {
             self.rpc_legacy_sse(&payload, 0, false).await?;
         } else {
@@ -685,7 +878,23 @@ fn build_client(row: &ServerRow, meta: &ServerMeta) -> Result<McpClient, String>
     if !row.enabled {
         return Err("MCP server is disabled".to_string());
     }
-    McpClient::new(row.url.clone(), row.transport.clone(), resolve_bearer(&row.id, meta))
+    if row.transport == "stdio" {
+        if meta.command.trim().is_empty() {
+            return Err("stdio server has no command configured".to_string());
+        }
+        return McpClient::new_stdio(
+            meta.command.trim(),
+            meta.args.clone(),
+            meta.env.clone(),
+            meta.headers.clone(),
+        );
+    }
+    McpClient::new(
+        row.url.clone(),
+        row.transport.clone(),
+        resolve_bearer(&row.id, meta),
+        meta.headers.clone(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -695,7 +904,7 @@ fn build_client(row: &ServerRow, meta: &ServerMeta) -> Result<McpClient, String>
 #[derive(Debug, Deserialize)]
 pub struct McpServerInput {
     pub name: String,
-    pub transport: String, // streamable_http | sse
+    pub transport: String, // streamable_http | sse | stdio
     pub url: String,
     pub auth_type: String, // none | bearer | oauth
     pub oauth_client_id: Option<String>,
@@ -706,6 +915,16 @@ pub struct McpServerInput {
     pub allowed_tools: Option<Vec<String>>,
     pub denied_tools: Option<Vec<String>>,
     pub bearer_present: Option<bool>,
+    /// stdio transport: the executable to launch (e.g. "npx").
+    pub command: Option<String>,
+    /// stdio transport: arguments passed to the command.
+    pub args: Option<Vec<String>>,
+    /// stdio transport: extra environment variables for the child process.
+    pub env: Option<std::collections::HashMap<String, String>>,
+    /// HTTP transports: extra headers sent with every request (e.g. header
+    /// API keys). Stored in the app database — use the bearer field for
+    /// secrets that belong in the OS keychain.
+    pub headers: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -722,6 +941,10 @@ pub struct McpServerView {
     pub allowed_tools: Vec<String>,
     pub denied_tools: Vec<String>,
     pub tool_count: i64,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: std::collections::HashMap<String, String>,
+    pub headers: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -877,8 +1100,9 @@ fn upsert_meta(conn: &Connection, server_id: &str, input: &McpServerInput) -> Re
     conn.execute(
         "INSERT INTO mcp_server_meta
             (server_id, auth_type, oauth_client_id, oauth_authorization_url, oauth_token_url,
-             oauth_scopes, oauth_redirect_uri, allowed_tools, denied_tools, bearer_present)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             oauth_scopes, oauth_redirect_uri, allowed_tools, denied_tools, bearer_present,
+             command, args, env, headers)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(server_id) DO UPDATE SET
             auth_type = excluded.auth_type,
             oauth_client_id = excluded.oauth_client_id,
@@ -888,7 +1112,11 @@ fn upsert_meta(conn: &Connection, server_id: &str, input: &McpServerInput) -> Re
             oauth_redirect_uri = excluded.oauth_redirect_uri,
             allowed_tools = excluded.allowed_tools,
             denied_tools = excluded.denied_tools,
-            bearer_present = excluded.bearer_present",
+            bearer_present = excluded.bearer_present,
+            command = excluded.command,
+            args = excluded.args,
+            env = excluded.env,
+            headers = excluded.headers",
         params![
             server_id,
             input.auth_type,
@@ -902,6 +1130,13 @@ fn upsert_meta(conn: &Connection, server_id: &str, input: &McpServerInput) -> Re
             serde_json::to_string(input.denied_tools.as_ref().unwrap_or(&Vec::new()))
                 .unwrap_or_else(|_| "[]".to_string()),
             input.bearer_present.unwrap_or(false) as i64,
+            input.command.clone().unwrap_or_default().trim().to_string(),
+            serde_json::to_string(input.args.as_deref().unwrap_or(&[]))
+                .unwrap_or_else(|_| "[]".to_string()),
+            serde_json::to_string(&input.env.clone().unwrap_or_default())
+                .unwrap_or_else(|_| "{}".to_string()),
+            serde_json::to_string(&input.headers.clone().unwrap_or_default())
+                .unwrap_or_else(|_| "{}".to_string()),
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -980,6 +1215,26 @@ pub async fn mcp_server_list(app: tauri::AppHandle) -> Result<Vec<McpServerView>
                 |r| r.get(0),
             )
             .unwrap_or(0);
+        let (stdio_command, stdio_args, stdio_env, stdio_headers) = conn
+            .query_row(
+                "SELECT COALESCE(command,''), COALESCE(args,'[]'), COALESCE(env,'{}'), COALESCE(headers,'{}')
+                 FROM mcp_server_meta WHERE server_id = ?1",
+                [&id],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .unwrap_or((
+                String::new(),
+                "[]".to_string(),
+                "{}".to_string(),
+                "{}".to_string(),
+            ));
         out.push(McpServerView {
             id: id.clone(),
             name,
@@ -993,6 +1248,10 @@ pub async fn mcp_server_list(app: tauri::AppHandle) -> Result<Vec<McpServerView>
             allowed_tools: allowed,
             denied_tools: denied,
             tool_count,
+            command: stdio_command,
+            args: json_string_list(&stdio_args).unwrap_or_default(),
+            env: serde_json::from_str(&stdio_env).unwrap_or_default(),
+            headers: serde_json::from_str(&stdio_headers).unwrap_or_default(),
         });
     }
     Ok(out)
@@ -1113,10 +1372,29 @@ async fn discover_tools(
     let started = Instant::now();
     let mut client = build_client(row, meta)?;
     let (server_info, protocol) = client.handshake().await?;
-    let result = client.call("tools/list", json!({})).await?;
+    // Paginate: servers return a `nextCursor` until the listing is complete.
+    let mut all: Vec<Value> = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_TOOL_PAGES {
+        let params = match &cursor {
+            Some(c) => json!({ "cursor": c }),
+            None => json!({}),
+        };
+        let result = client.call("tools/list", params).await?;
+        if let Some(arr) = result.get("tools").and_then(|v| v.as_array()) {
+            all.extend(arr.iter().cloned());
+        }
+        cursor = result
+            .get("nextCursor")
+            .and_then(|c| c.as_str())
+            .filter(|c| !c.is_empty())
+            .map(|c| c.to_string());
+        if cursor.is_none() {
+            break;
+        }
+    }
     let latency_ms = started.elapsed().as_millis() as u64;
-    let arr = result.get("tools").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let tools: Vec<McpToolInfo> = arr
+    let tools: Vec<McpToolInfo> = all
         .iter()
         .map(|t| tool_from_json(&row.id, &row.name, t, true)) // enabled resolved from registry by caller
         .collect();
@@ -1585,7 +1863,7 @@ pub enum GrantDuration {
 impl GrantDuration {
     fn to_duration(&self) -> Option<chrono::Duration> {
         match self {
-            GrantDuration::Once => None, // Handled specially
+            GrantDuration::Once => None, // stored once=true in metadata; consumed by its first use
             GrantDuration::Hour => Some(chrono::Duration::hours(1)),
             GrantDuration::Day => Some(chrono::Duration::days(1)),
             GrantDuration::Week => Some(chrono::Duration::weeks(1)),
@@ -1658,6 +1936,21 @@ pub fn perm_get_effective_level(
     perm_get_level(conn, domain)
 }
 
+/// Consume one-shot grants after their first successful execution.
+pub fn perm_consume_once(app: &tauri::AppHandle, agent_id: &str, tool: &str, domain: &str) {
+    let Ok(conn) = open_db(app) else { return };
+    let now = now_rfc3339();
+    let _ = conn.execute(
+        "UPDATE permissions_temporal SET revoked_at = ?1
+         WHERE revoked_at IS NULL
+           AND metadata LIKE '%\"once\":true%'
+           AND (agent_id = '' OR agent_id = ?2)
+           AND (tool = '*' OR tool = ?3)
+           AND domain = ?4",
+        params![now, agent_id, tool, domain],
+    );
+}
+
 /// Grant a time-based permission.
 #[tauri::command]
 pub async fn perm_grant(
@@ -1691,6 +1984,26 @@ pub async fn perm_grant(
         (chrono::Utc::now() + d).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     });
 
+    // One-shot grants are marked in metadata and revoked after their first
+    // successful use (see `perm_consume_once`).
+    let mut metadata_value: Value = metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<Value>(m).ok())
+        .filter(|v| v.is_object())
+        .unwrap_or_else(|| json!({}));
+    if matches!(duration, GrantDuration::Once) {
+        metadata_value["once"] = json!(true);
+    }
+    let metadata_str = if metadata_value
+        .as_object()
+        .map(|o| o.is_empty())
+        .unwrap_or(true)
+    {
+        None
+    } else {
+        Some(metadata_value.to_string())
+    };
+
     let tool = tool.unwrap_or_else(|| "*".to_string());
     let agent_id = String::new(); // Global grants for now; can extend to agent-specific later
 
@@ -1706,7 +2019,7 @@ pub async fn perm_grant(
             level,
             granted_at,
             expires_at,
-            metadata,
+            metadata_str,
         ],
     )
     .map_err(|e| e.to_string())?;
