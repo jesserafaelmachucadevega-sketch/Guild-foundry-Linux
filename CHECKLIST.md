@@ -119,3 +119,31 @@ Status: ran 2026-10-06 against the pre-integration tree — 22/22 NOT VERIFIED (
 - [x] Secrets scan — zero hardcoded secrets in src/ and src-tauri/src/
 - [x] Rust compilation (`cargo check --all-targets`, `cargo test`, `cargo clippy --all-targets`) — **COMPILE-VERIFIED** 2026-10-08 on Rust 1.99.0 / aarch64-unknown-linux-gnu (clippy: no errors; 5 tests passing)
 - [ ] 22-step acceptance re-run on target — **NOT VERIFIED** (needs native app + provider keys + MCP server)
+
+## PHASE 15/16 — Personal Agent completion, real tools, local models (2026-10-13)
+Status: implemented + verified at the layer level (typecheck, vite build, IPC 163/270, cargo check/test 24, clippy).
+- [x] Provider templates repaired (honest local presets; orphan `local` kind removed)
+- [x] `web.fetch` (native HTTP fetch + readable extraction) — no more stubs
+- [x] `document.*` — real extraction (PDF/DOCX/PPTX/XLSX/ODS/ODT/RTF/HTML/CSV/code), compare, convert, OCR
+- [x] Upload pipeline — attached documents are extracted and sent to the model; images persist
+- [x] `email.*` — native IMAP (pure-Rust rustls) + SMTP (lettre); Connections account card
+- [x] `calendar.*` — native CalDAV client (create/update/delete/list); Connections account card
+- [x] `cloud.drive_*` — routed to connected drive MCP services with honest guidance
+- [x] `phone.*` — native Twilio SMS + calls (+ `telephony` permission domain)
+- [x] `git.*` agent tools (status/diff/log/commit — commit approval-gated)
+- [x] Agent thread persistence → SQLite (model-agnostic, per-workspace) + history replay into every turn
+- [x] Tool-call adapter registry (fenced/XML/bare-JSON) + validator with self-correcting errors
+- [x] Dead-UI sweep: poll Submit wired to the loop, media "Generating…" placeholder, reply persistence, autoscroll
+- [x] Direct GGUF local models — in-process llama.cpp, no server; Local Models manager; everywhere a model loads
+- [x] Sampling controls (temperature / top-p / top-k / seed / penalties / stop) per provider, incl. GGUF
+- [x] Floating/resizable/minimizable chat window (pop-out) with persisted bounds
+- [x] Coding agent in the Projects workspace (same assistant, same tools; `projects-agent` prompt)
+- [x] Message-style bubbles: white (you) / blue (cloud model) / green (local model), reactions row, reply
+- [x] Local Whisper STT (offline, whisper-helper binary) with cloud fallback
+- [x] MCP stdio transport + per-server custom headers + pagination + official-server quick-add presets
+- [x] One-shot permission grants actually consume after first successful use
+- [x] CI: IPC contract check added; cmake/clang/libclang added to the Rust job
+- [ ] Kokoro ONNX local TTS — **NOT ENABLED** (needs onnxruntime + espeak-ng + model files; status surfaced honestly in the UI; cloud TTS remains)
+- [ ] Bundled release build (`tauri build`) — whisper-helper still needs `externalBin` packaging config
+- [ ] Native Google/Outlook calendar OAuth — by design via their MCP connectors instead
+

@@ -39,6 +39,15 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
 OS keyring access (credential storage). Without them, provider API keys and
 other secrets cannot be stored securely.
 
+**Native engines (local models + offline voice):** the app compiles llama.cpp
+(local GGUF inference) and whisper.cpp (offline transcription) from source:
+
+```sh
+sudo apt install cmake clang libclang-dev
+# optional, only for local speech OUTPUT (Kokoro ONNX):
+sudo apt install espeak-ng
+```
+
 ## Develop
 
 ```sh
