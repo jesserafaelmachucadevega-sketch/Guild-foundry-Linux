@@ -16,6 +16,7 @@ mod build;
 mod db;
 mod diagnostics;
 mod git;
+mod gguf;
 mod harness;
 mod index;
 mod integrations;
@@ -110,6 +111,7 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Phase 1: initialize SQLite (runs migrations) before any command.
             // Fail fast: continuing without a database would make every DB-backed
@@ -224,6 +226,12 @@ fn main() {
             harness::harness_thread_load,
             harness::harness_thread_save,
             harness::harness_thread_clear,
+            gguf::gguf_scan,
+            gguf::gguf_set_folders,
+            gguf::gguf_status,
+            gguf::gguf_load,
+            gguf::gguf_unload,
+            gguf::gguf_set_ctx,
             // Phase 7 — MCP gateway + permissions
             mcp::mcp_server_add,
             mcp::mcp_server_update,

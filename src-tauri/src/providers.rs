@@ -241,6 +241,7 @@ const KNOWN_KINDS: &[&str] = &[
     "google",
     "openrouter",
     "ollama",
+    "gguf",
     "custom",
 ];
 
@@ -271,7 +272,7 @@ fn provider_key_name(id: &str) -> String {
 // Database helpers (reuse db.rs tables; additive columns only).
 // ---------------------------------------------------------------------------
 
-fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
+pub(crate) fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     let conn =
         Connection::open(crate::secrets::db_path(app)?).map_err(|e| e.to_string())?;
     ensure_provider_columns(&conn).map_err(|e| e.to_string())?;
@@ -427,8 +428,35 @@ pub fn providers_any_connected(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(n > 0)
 }
 
+/// Make sure the built-in local GGUF provider row exists.
+pub(crate) fn ensure_gguf_provider(app: &tauri::AppHandle) -> Result<(), String> {
+    let conn = open_db(app)?;
+    ensure_provider_columns(&conn).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO providers (id, name, kind, base_url, models_path, enabled)
+         VALUES (?1, 'Local GGUF files', 'gguf', '', '', 1)",
+        [crate::gguf::PROVIDER_ID],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// True when the user cancelled this stream — checked by in-process backends
+/// (GGUF) between decoded tokens.
+pub(crate) fn is_stream_cancelled(stream_id: &str) -> bool {
+    cancel_map()
+        .lock()
+        .ok()
+        .and_then(|m| {
+            m.get(stream_id)
+                .map(|f| f.load(Ordering::Relaxed))
+        })
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 pub fn provider_list(app: tauri::AppHandle) -> Result<Vec<ProviderSummary>, String> {
+    let _ = ensure_gguf_provider(&app);
     let conn = open_db(&app)?;
     let mut stmt = conn
         .prepare(
@@ -701,6 +729,29 @@ pub async fn provider_handshake(
 ) -> Result<HandshakeReport, String> {
     let started = Instant::now();
     let cfg = load_provider(&app, &provider_id)?;
+
+    // Local GGUF files: no endpoint, no key — verify the file list instead.
+    if cfg.kind == "gguf" {
+        let n = crate::gguf::sync_models(&app).unwrap_or(0);
+        return Ok(HandshakeReport {
+            provider_id: cfg.id,
+            ok: true,
+            http_status: None,
+            raw_code: "LOCAL".to_string(),
+            layman: "Ready (local files)".to_string(),
+            detail: format!(
+                "{} GGUF file(s) available — inference runs in-process, no server required.",
+                n
+            ),
+            latency_ms: started.elapsed().as_millis() as u64,
+            models_found: n,
+            capabilities: Some(Capabilities {
+                tool_calling: true,
+                vision: false,
+                structured_output: false,
+            }),
+        });
+    }
 
     // Step 1: validate configuration before any network use.
     if !KNOWN_KINDS.contains(&cfg.kind.as_str()) {
@@ -988,7 +1039,10 @@ pub fn provider_list_models(
     app: tauri::AppHandle,
     provider_id: String,
 ) -> Result<Vec<ModelInfo>, String> {
-    load_provider(&app, &provider_id)?;
+    let cfg = load_provider(&app, &provider_id)?;
+    if cfg.kind == "gguf" {
+        let _ = crate::gguf::sync_models(&app);
+    }
     let conn = open_db(&app)?;
     let mut stmt = conn
         .prepare(
@@ -1049,6 +1103,32 @@ pub async fn provider_refresh_models(
 // ---------------------------------------------------------------------------
 // Chat: request building per provider family.
 // ---------------------------------------------------------------------------
+
+/// Flatten a chat request into (role, content) pairs with the system prompt
+/// first — the shape the in-process GGUF engine expects.
+fn chat_messages_with_system(messages: &[ChatMsg], params: &ChatParams) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    if let Some(sys) = params.system_prompt.as_deref() {
+        if !sys.trim().is_empty() {
+            out.push(("system".to_string(), sys.to_string()));
+        }
+    }
+    for m in messages {
+        if m.role == "system" {
+            // Merge multiple system turns into one leading system message.
+            match out.first_mut() {
+                Some((role, content)) if role == "system" => {
+                    content.push_str("\n\n");
+                    content.push_str(&m.content);
+                }
+                _ => out.push(("system".to_string(), m.content.clone())),
+            }
+        } else {
+            out.push((m.role.clone(), m.content.clone()));
+        }
+    }
+    out
+}
 
 struct ChatTarget {
     url: String,
@@ -1416,6 +1496,31 @@ pub async fn provider_chat_complete(
     // Applies to free models only; paid models bypass.
     crate::ratelimit::acquire(&app, &provider_id, &model_id).await?;
     let cfg = load_provider(&app, &provider_id)?;
+
+    // Local GGUF files: run in-process, no HTTP.
+    if cfg.kind == "gguf" {
+        let msgs = chat_messages_with_system(&messages, &params);
+        let gp = crate::gguf::GenParams::from_chat(
+            params.temperature,
+            params.top_p,
+            params.top_k,
+            params.seed,
+            params.max_tokens,
+            params.stop.clone(),
+        );
+        let app2 = app.clone();
+        let mid = model_id.clone();
+        let text = tauri::async_runtime::spawn_blocking(move || {
+            crate::gguf::generate_complete(&app2, &mid, &msgs, &gp)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        return Ok(CompleteResult {
+            content: text,
+            latency_ms: started.elapsed().as_millis() as u64,
+        });
+    }
+
     let key = crate::secrets::keyring_get(&provider_key_name(&cfg.id));
     let target = build_chat_target(&cfg, key.as_deref(), &model_id, &messages, &params, false)?;
     let resp = tokio::time::timeout(Duration::from_secs(180), send_chat(&target).send())
@@ -1585,6 +1690,26 @@ async fn run_stream(
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), String> {
     let started = Instant::now();
+    // Local GGUF files: run in-process on the blocking pool, same events.
+    if cfg.kind == "gguf" {
+        let msgs = chat_messages_with_system(messages, params);
+        let gp = crate::gguf::GenParams::from_chat(
+            params.temperature,
+            params.top_p,
+            params.top_k,
+            params.seed,
+            params.max_tokens,
+            params.stop.clone(),
+        );
+        let app2 = app.clone();
+        let sid = stream_id.to_string();
+        let mid = model_id.to_string();
+        return tauri::async_runtime::spawn_blocking(move || {
+            crate::gguf::stream_generate(&app2, &sid, &mid, &msgs, &gp)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     let key = crate::secrets::keyring_get(&provider_key_name(&cfg.id));
     let target = build_chat_target(cfg, key.as_deref(), model_id, messages, params, true)?;
 

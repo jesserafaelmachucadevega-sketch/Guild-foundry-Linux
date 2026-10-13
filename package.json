@@ -4,11 +4,12 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@tauri-apps/api": "2.12.1",
     "@tauri-apps/plugin-clipboard-manager": "2.4.1",
+    "@tauri-apps/plugin-dialog": "^2.8.2",
     "monaco-editor": "^0.57.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
-  "description": "Guild Foundry AI \u2014 native Linux desktop application (Tauri 2 + React + TypeScript): App Builder Studio + Conference Room + Provider Control Center + MCP/Tool Gateway.",
+  "description": "Guild Foundry AI — native Linux desktop application (Tauri 2 + React + TypeScript): App Builder Studio + Conference Room + Provider Control Center + MCP/Tool Gateway.",
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",
     "@types/node": "^22.0.0",

@@ -10,13 +10,14 @@ import { invoke, isDesktop } from '../../lib/api';
 import { getProviders, type ModelInfo, type ProviderSummary } from '../../lib/providers';
 import { ProvidersPanel } from '../providers/ProvidersPanel';
 import { ModelCatalog } from '../models/ModelCatalog';
+import { LocalModels } from '../models/LocalModels';
 import './hub.css';
 
 interface Props {
   onToast: (t: string) => void;
 }
 
-type HubTab = 'providers' | 'catalog' | 'aliases';
+type HubTab = 'providers' | 'catalog' | 'aliases' | 'local';
 
 function AliasesPanel({ onToast }: Props): React.ReactElement {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
@@ -144,6 +145,7 @@ export function ModelsApiHub({ onToast }: Props): React.ReactElement {
               [
                 ['providers', 'API Keyring & Providers'],
                 ['catalog', 'Model Catalog & Router'],
+                ['local', 'Local Models (GGUF)'],
                 ['aliases', 'Model Aliases'],
               ] as [HubTab, string][]
             ).map(([id, label]) => (
@@ -156,6 +158,7 @@ export function ModelsApiHub({ onToast }: Props): React.ReactElement {
         <div className="hub-fill">
           {tab === 'providers' && <ProvidersPanel onToast={onToast} />}
           {tab === 'catalog' && <ModelCatalog onToast={onToast} />}
+          {tab === 'local' && <LocalModels onToast={onToast} />}
           {tab === 'aliases' && <AliasesPanel onToast={onToast} />}
         </div>
       </div>

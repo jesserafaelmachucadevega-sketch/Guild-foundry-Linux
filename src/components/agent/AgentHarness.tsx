@@ -1028,7 +1028,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
                   {models.length === 0 && <option value="">No models</option>}
                   {models.map((m) => (
                     <option key={m.id} value={m.model_id}>
-                      {m.model_id}
+                      {m.name || m.model_id}
                     </option>
                   ))}
                 </select>
