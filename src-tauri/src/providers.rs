@@ -4,7 +4,14 @@
 // Master spec sections 10-14: providers are never hard-coded into the UI; all
 // privileged work (HTTP, credentials, streaming) happens here in Rust. The
 // frontend talks to these commands only through the frozen contracts in
-// src/lib/providers.ts and src/lib/chat.ts (snake_case channels).
+// src/lib/providers.ts and src/lib/chat.ts.
+//
+// IPC key contract: Tauri 2 looks up each command argument's JS key as the
+// camelCase form of the Rust parameter name UNLESS the command opts into
+// `#[tauri::command(rename_all = "snake_case")]` (used here to match the
+// snake_case TS contracts). `provider_upsert` instead takes a single
+// `ProviderUpsertPayload` struct nested under the `payload` key whose fields
+// are camelCase via `#[serde(rename_all = "camelCase")]`.
 //
 // Supported kinds: openai, openai-compatible, anthropic, google, openrouter,
 // ollama, custom. Streaming parses real SSE / NDJSON per provider family.
@@ -59,6 +66,35 @@ fn cancel_map() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
 // ---------------------------------------------------------------------------
 // Wire types (must match src/lib/providers.ts / src/lib/chat.ts exactly).
 // ---------------------------------------------------------------------------
+
+/// camelCase wire contract for `provider_upsert`.
+///
+/// The frontend (`upsertProvider` in src/lib/providers.ts) sends a camelCase
+/// object nested under the `payload` invoke key; `rename_all` maps the Rust
+/// snake_case fields to/from it (`base_url` <-> `baseUrl`). Optional fields
+/// carry `#[serde(default)]` so the JS side may omit them entirely (JSON drops
+/// `undefined` values) instead of sending explicit nulls. `deny_unknown_fields`
+/// turns a stale snake_case key into an immediate, explicit error instead of
+/// silently dropping it and failing later with a confusing default-URL error.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderUpsertPayload {
+    /// Existing provider id to update; omitted/empty creates a new provider.
+    #[serde(default)]
+    pub id: Option<String>,
+    pub name: String,
+    /// One of `KNOWN_KINDS`; validated in the handler.
+    pub kind: String,
+    /// Empty/omitted falls back to the kind's default base URL.
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// Empty/omitted falls back to the kind's default models path.
+    #[serde(default)]
+    pub models_path: Option<String>,
+    /// Only used to (re)store the key in the OS keyring; never returned.
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
 
 #[derive(Serialize)]
 pub struct ProviderSummary {
@@ -432,13 +468,16 @@ pub fn provider_list(app: tauri::AppHandle) -> Result<Vec<ProviderSummary>, Stri
 #[tauri::command]
 pub fn provider_upsert(
     app: tauri::AppHandle,
-    id: Option<String>,
-    name: String,
-    kind: String,
-    base_url: String,
-    models_path: String,
-    api_key: Option<String>,
+    payload: ProviderUpsertPayload,
 ) -> Result<ProviderSummary, String> {
+    let ProviderUpsertPayload {
+        id,
+        name,
+        kind,
+        base_url,
+        models_path,
+        api_key,
+    } = payload;
     if !KNOWN_KINDS.contains(&kind.as_str()) {
         return Err(format!("unknown provider kind: {}", kind));
     }
@@ -446,7 +485,7 @@ pub fn provider_upsert(
     if name.is_empty() {
         return Err("provider name is required".to_string());
     }
-    let mut base_url = base_url.trim().to_string();
+    let mut base_url = base_url.unwrap_or_default().trim().to_string();
     if base_url.is_empty() {
         base_url = default_base_url(&kind).to_string();
     }
@@ -455,7 +494,7 @@ pub fn provider_upsert(
     }
     reqwest::Url::parse(&base_url)
         .map_err(|e| format!("invalid base_url '{}': {}", base_url, e))?;
-    let mut models_path = models_path.trim().to_string();
+    let mut models_path = models_path.unwrap_or_default().trim().to_string();
     if models_path.is_empty() {
         models_path = default_models_path(&kind).to_string();
     }
@@ -507,7 +546,9 @@ pub fn provider_upsert(
     })
 }
 
-#[tauri::command]
+// The TS contract in src/lib/providers.ts sends snake_case keys
+// (`provider_id`); Tauri 2 would otherwise look up `providerId`.
+#[tauri::command(rename_all = "snake_case")]
 pub fn provider_delete(app: tauri::AppHandle, provider_id: String) -> Result<(), String> {
     // Ensure it exists first so deletes of unknown ids fail loudly.
     load_provider(&app, &provider_id)?;
@@ -645,7 +686,9 @@ fn mark_status(
     Ok(())
 }
 
-#[tauri::command]
+// The TS contract in src/lib/providers.ts sends snake_case keys
+// (`provider_id`); Tauri 2 would otherwise look up `providerId`.
+#[tauri::command(rename_all = "snake_case")]
 pub async fn provider_handshake(
     app: tauri::AppHandle,
     provider_id: String,
@@ -932,7 +975,9 @@ fn row_to_model_info(
     }
 }
 
-#[tauri::command]
+// The TS contract in src/lib/providers.ts sends snake_case keys
+// (`provider_id`); Tauri 2 would otherwise look up `providerId`.
+#[tauri::command(rename_all = "snake_case")]
 pub fn provider_list_models(
     app: tauri::AppHandle,
     provider_id: String,
@@ -975,7 +1020,9 @@ pub fn provider_list_models(
     Ok(out)
 }
 
-#[tauri::command]
+// The TS contract in src/lib/providers.ts sends snake_case keys
+// (`provider_id`); Tauri 2 would otherwise look up `providerId`.
+#[tauri::command(rename_all = "snake_case")]
 pub async fn provider_refresh_models(
     app: tauri::AppHandle,
     provider_id: String,
@@ -1285,7 +1332,10 @@ fn parse_complete(kind: &str, body: &serde_json::Value) -> Result<(String, u64, 
     }
 }
 
-#[tauri::command]
+// The TS contract in src/lib/chat.ts sends snake_case keys
+// (`provider_id`, `model_id`, `stream_id`); Tauri 2 would otherwise look up
+// camelCase keys. `params` is a ChatParams struct — serde renames ITS fields.
+#[tauri::command(rename_all = "snake_case")]
 pub async fn provider_chat_complete(
     app: tauri::AppHandle,
     provider_id: String,
@@ -1567,7 +1617,10 @@ async fn run_stream(
     Ok(())
 }
 
-#[tauri::command]
+// The TS contract in src/lib/chat.ts sends snake_case keys
+// (`stream_id`, `provider_id`, `model_id`); Tauri 2 would otherwise look up
+// camelCase keys. `params` is a ChatParams struct — serde renames ITS fields.
+#[tauri::command(rename_all = "snake_case")]
 pub fn provider_chat_stream(
     app: tauri::AppHandle,
     stream_id: String,
@@ -1627,7 +1680,9 @@ pub fn provider_chat_stream(
     Ok(())
 }
 
-#[tauri::command]
+// The TS contract in src/lib/chat.ts sends snake_case keys
+// (`stream_id`); Tauri 2 would otherwise look up `streamId`.
+#[tauri::command(rename_all = "snake_case")]
 pub fn provider_chat_cancel(stream_id: String) -> Result<(), String> {
     if let Ok(map) = cancel_map().lock() {
         if let Some(flag) = map.get(&stream_id) {
@@ -1818,4 +1873,241 @@ pub fn provider_router_suggest(
         model_id: best.model_id.clone(),
         reason: format!("Selected '{}' because {}.", best.name, why.join(", ")),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tests: IPC wire contract for the provider commands.
+//
+// These exercise the REAL Tauri IPC path (tauri::test mock runtime + the
+// macro-generated argument lookup), not just plain serde — so a contract
+// regression fails `cargo test` exactly the way it fails in the running app.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Exactly what src/lib/providers.ts `upsertProvider()` sends: the payload
+    /// object nested under the `payload` key (the Rust struct arg name), with
+    /// fields in camelCase per `#[serde(rename_all = "camelCase")]`.
+    /// 127.0.0.1:1 is used so the handshake test gets an instant, offline
+    /// connection-refused without any real network dependency.
+    const FRONTEND_UPSERT_JSON: &str = r#"{
+        "payload": {
+            "id": "ipc-selftest-provider",
+            "name": "IPC Self Test",
+            "kind": "openai-compatible",
+            "baseUrl": "http://127.0.0.1:1",
+            "modelsPath": "/models"
+        }
+    }"#;
+
+    #[test]
+    fn payload_struct_accepts_frontend_camelcase() {
+        let p: ProviderUpsertPayload = serde_json::from_str(
+            r#"{"id":"p1","name":"N","kind":"custom",
+                "baseUrl":"https://x.test/v1","modelsPath":"/models","apiKey":"k"}"#,
+        )
+        .expect("frontend camelCase payload must deserialize");
+        assert_eq!(p.id.as_deref(), Some("p1"));
+        assert_eq!(p.name, "N");
+        assert_eq!(p.kind, "custom");
+        assert_eq!(p.base_url.as_deref(), Some("https://x.test/v1"));
+        assert_eq!(p.models_path.as_deref(), Some("/models"));
+        assert_eq!(p.api_key.as_deref(), Some("k"));
+    }
+
+    #[test]
+    fn payload_optional_fields_may_be_omitted() {
+        // JSON.stringify drops `undefined` values, so "omitted" is the normal
+        // JS encoding for the optional fields — serde defaults fill them in.
+        let p: ProviderUpsertPayload =
+            serde_json::from_str(r#"{"name":"N","kind":"ollama"}"#).unwrap();
+        assert!(p.id.is_none());
+        assert!(p.base_url.is_none());
+        assert!(p.models_path.is_none());
+        assert!(p.api_key.is_none());
+    }
+
+    #[test]
+    fn payload_rejects_stale_snake_case_fields() {
+        // Regression guard for commit 9268613, which sent flat snake_case
+        // keys (base_url/models_path/api_key): Tauri looks up camelCase, so
+        // those keys never matched and every provider save failed.
+        // deny_unknown_fields makes the drift an explicit error.
+        let err = serde_json::from_str::<ProviderUpsertPayload>(
+            r#"{"name":"N","kind":"custom","base_url":"https://x.test","models_path":"/models","api_key":"k"}"#,
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("unknown field `base_url`"),
+            "stale snake_case keys must be rejected explicitly, got: {msg}"
+        );
+    }
+
+    // ---- Wire-level tests through the real macro-generated handler ----
+    //
+    // The real commands hardcode `tauri::AppHandle` (= AppHandle<Wry>), which
+    // the MockRuntime harness cannot inject, so the wire contract is verified
+    // with SIGNATURE-IDENTICAL mirror commands: same argument names, same
+    // `rename_all`, same payload struct. The `#[tauri::command]` macro
+    // generates the argument key lookup purely from the signature, so the
+    // mirrors exercise exactly the code path the real commands use.
+
+    /// Mirrors `provider_upsert(app, payload: ProviderUpsertPayload)` minus
+    /// the AppHandle (injected types never come from the JS payload).
+    #[tauri::command]
+    fn wire_mirror_upsert(payload: ProviderUpsertPayload) -> Result<String, String> {
+        // Echo the deserialized fields so the test can prove they landed.
+        Ok(format!(
+            "{}|{}|{}|{}",
+            payload.name,
+            payload.kind,
+            payload.base_url.as_deref().unwrap_or("<default>"),
+            payload.models_path.as_deref().unwrap_or("<default>"),
+        ))
+    }
+
+    /// Mirrors `provider_handshake(..., provider_id)` WITH the snake_case fix.
+    #[tauri::command(rename_all = "snake_case")]
+    fn wire_mirror_handshake_fixed(provider_id: String) -> Result<String, String> {
+        Ok(provider_id)
+    }
+
+    /// Mirrors `provider_handshake(..., provider_id)` WITHOUT the fix — this
+    /// is literally what the app did before: Tauri then looks up `providerId`,
+    /// not `provider_id`.
+    #[tauri::command]
+    fn wire_mirror_handshake_broken(provider_id: String) -> Result<String, String> {
+        Ok(provider_id)
+    }
+
+    fn mock_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![
+                wire_mirror_upsert,
+                wire_mirror_handshake_fixed,
+                wire_mirror_handshake_broken,
+            ])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app");
+        tauri::WebviewWindowBuilder::new(app.handle(), "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    fn invoke(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<String, String> {
+        tauri::test::get_ipc_response(
+            webview,
+            tauri::webview::InvokeRequest {
+                cmd: cmd.into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "tauri://localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|res| match res {
+            tauri::ipc::InvokeResponseBody::Json(s) => {
+                // Responses are JSON documents; our mirrors return plain strings.
+                serde_json::from_str::<String>(&s).unwrap_or(s)
+            }
+            other => panic!("{cmd}: unexpected response body: {other:?}"),
+        })
+        .map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn upsert_frontend_payload_deserializes_over_the_wire() {
+        let webview = mock_webview();
+        let body: serde_json::Value = serde_json::from_str(FRONTEND_UPSERT_JSON).unwrap();
+        let echoed = invoke(&webview, "wire_mirror_upsert", body)
+            .expect("frontend payload must pass deserialization");
+        assert_eq!(echoed, "IPC Self Test|openai-compatible|http://127.0.0.1:1|/models");
+    }
+
+    #[test]
+    fn upsert_legacy_flat_snake_case_shape_is_rejected() {
+        // The pre-fix TS sent flat snake_case keys. Tauri looks up the
+        // camelCase form of each Rust arg name, so the command failed with
+        // "missing required key" BEFORE any handler code ran — this is the
+        // runtime failure users hit when saving a provider.
+        let webview = mock_webview();
+        let err = invoke(
+            &webview,
+            "wire_mirror_upsert",
+            serde_json::json!({
+                "id": "x", "name": "x", "kind": "custom",
+                "base_url": "https://x.test", "models_path": "/models", "api_key": "k"
+            }),
+        )
+        .expect_err("legacy flat snake_case shape must be rejected");
+        assert!(
+            err.contains("missing required key"),
+            "expected an arg-key lookup failure, got: {err}"
+        );
+    }
+
+    #[test]
+    fn upsert_snake_case_fields_inside_payload_are_rejected() {
+        let webview = mock_webview();
+        let err = invoke(
+            &webview,
+            "wire_mirror_upsert",
+            serde_json::json!({"payload": {
+                "name": "x", "kind": "custom",
+                "base_url": "https://x.test", "models_path": "/models", "api_key": "k"
+            }}),
+        )
+        .expect_err("snake_case struct fields must be rejected");
+        // serde reports one unknown field at a time (any of base_url/
+        // models_path/api_key); any of them proves the contract is enforced.
+        assert!(
+            err.contains("unknown field"),
+            "deny_unknown_fields must reject stale snake_case keys, got: {err}"
+        );
+        assert!(
+            err.contains("baseUrl") && err.contains("apiKey"),
+            "error must list the expected camelCase fields, got: {err}"
+        );
+    }
+
+    #[test]
+    fn handshake_snake_case_key_works_with_rename_all() {
+        // The "Connect" path: providers.ts sends { provider_id }. With
+        // rename_all = "snake_case" the mirror receives it.
+        let webview = mock_webview();
+        let echoed = invoke(
+            &webview,
+            "wire_mirror_handshake_fixed",
+            serde_json::json!({"provider_id": "abc-123"}),
+        )
+        .expect("snake_case provider_id must reach the handler");
+        assert_eq!(echoed, "abc-123");
+    }
+
+    #[test]
+    fn handshake_snake_case_key_fails_without_rename_all() {
+        // Reproduces the original app bug end-to-end: WITHOUT rename_all the
+        // same { provider_id } payload is rejected because Tauri looks up
+        // `providerId` — the "Connect" button failed before any Rust code ran.
+        let webview = mock_webview();
+        let err = invoke(
+            &webview,
+            "wire_mirror_handshake_broken",
+            serde_json::json!({"provider_id": "abc-123"}),
+        )
+        .expect_err("without rename_all the snake_case key must not match");
+        assert!(
+            err.contains("providerId"),
+            "Tauri should look up camelCase providerId, got: {err}"
+        );
+    }
 }

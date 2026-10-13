@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::Manager;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,9 +42,27 @@ const OAUTH_STATE_PREFIX: &str = "gfa-mcp-oauth:";
 const OAUTH_TOKEN_PREFIX: &str = "gfa-mcp-token:";
 const BEARER_TOKEN_PREFIX: &str = "gfa-mcp-bearer:";
 const DEFAULT_REDIRECT_URI: &str = "http://127.0.0.1:18793/oauth/callback";
-const PROTOCOL_VERSION: &str = "2025-06-18";
+/// Protocol revisions this client can speak, newest first. The handshake
+/// announces the newest entry and adopts whatever the server answers with as
+/// long as it is on this list (MCP revision negotiation); anything else is a
+/// hard error rather than a silent mismatch.
+const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
+/// The version we announce: the newest one we support.
+const PROTOCOL_VERSION: &str = SUPPORTED_PROTOCOL_VERSIONS[0];
 const CLIENT_NAME: &str = "guild-foundry-ai";
 const CLIENT_VERSION: &str = "0.1.0";
+/// Deadline for one JSON-RPC request (send + response headers + body). Applied
+/// per request, NOT via `reqwest`'s `.timeout()`: that covers the whole
+/// streamed body and would abort any tool call that runs longer than the
+/// deadline — exactly the legitimate case for expensive MCP tools.
+const REQUEST_DEADLINE: Duration = Duration::from_secs(30);
+/// How long an open SSE stream may sit idle before we give up waiting for the
+/// next event. Deliberately generous: sampling/roots/list progress and slow
+/// tool calls both legitimately take minutes.
+const SSE_IDLE_DEADLINE: Duration = Duration::from_secs(120);
+/// Hard cap on tools/list pagination (nextCursor), so a server that never
+/// stops sending cursors cannot loop forever.
+const MAX_TOOL_PAGES: usize = 50;
 
 const PERM_DOMAINS: [&str; 9] = [
     "filesystem",
@@ -75,7 +94,19 @@ fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("guild-foundry-ai.db"))
 }
 
+/// Version stamp for the additive Phase 7 tables. `PRAGMA user_version` is
+/// unused by db.rs/build.rs (they use `schema_migrations`), so it is free to
+/// use here as a cheap "tables already exist" marker: without it every open
+/// re-ran four `execute_batch` statements.
+const PHASE7_SCHEMA_VERSION: i64 = 1;
+
 fn ensure_phase7_schema(conn: &Connection) -> Result<(), String> {
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap_or(0);
+    if version >= PHASE7_SCHEMA_VERSION {
+        return Ok(());
+    }
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS mcp_server_meta (
             server_id               TEXT PRIMARY KEY,
@@ -97,11 +128,44 @@ fn ensure_phase7_schema(conn: &Connection) -> Result<(), String> {
             audit_policy            TEXT NOT NULL DEFAULT 'always'
         );",
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    // Additive column: the always-ask flag used to live *inside* the
+    // permission_requirements list (mixed in with requirement ids).
+    let has_always_ask: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('mcp_tool_meta') WHERE name = 'always_ask'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_always_ask == 0 {
+        conn.execute_batch(
+            "ALTER TABLE mcp_tool_meta ADD COLUMN always_ask INTEGER NOT NULL DEFAULT 0;",
+        )
+        .map_err(|e| e.to_string())?;
+        // Backfill rows written before the split, then leave the (now
+        // redundant) legacy marker in place — readers accept either form
+        // until the tool is re-discovered and rewritten.
+        let _ = conn.execute(
+            "UPDATE mcp_tool_meta SET always_ask = 1 WHERE permission_requirements LIKE ?1",
+            ["%\"ask_every_time\"%"],
+        );
+    }
+    conn.execute_batch(&format!("PRAGMA user_version = {};", PHASE7_SCHEMA_VERSION))
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     let conn = Connection::open(db_path(app)?).map_err(|e| e.to_string())?;
+    // Other modules (db.rs, providers.rs, tools.rs) open this same file, so a
+    // brief contention window is normal: block for a moment instead of
+    // failing with SQLITE_BUSY. Both pragmas are idempotent.
+    conn.busy_timeout(Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
+    // `journal_mode` returns a row, so it is read rather than batch-executed.
+    let _ = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get::<_, String>(0));
+    let _ = conn.execute_batch("PRAGMA synchronous=NORMAL;");
     ensure_phase7_schema(&conn)?;
     Ok(conn)
 }
@@ -159,8 +223,17 @@ fn sha256_hex(s: &str) -> String {
     to_hex(&h.finalize())
 }
 
-fn json_string_list(s: &str) -> Vec<String> {
-    serde_json::from_str::<Vec<String>>(s).unwrap_or_default()
+/// Parse a stored JSON array-of-strings column. FAILS CLOSED: an unparseable
+/// value returns Err so callers refuse to proceed (never "treat as empty",
+/// which would silently turn a server's `allowed_tools`/`denied_tools` policy
+/// into "no restrictions"). Only empty/whitespace is Ok(vec![]).
+fn json_string_list(s: &str) -> Result<Vec<String>, String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str::<Vec<String>>(trimmed)
+        .map_err(|e| format!("expected a JSON array of strings: {} (got '{}')", e, trimmed))
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +248,10 @@ struct ServerRow {
     enabled: bool,
 }
 
+/// Per-server configuration. NOTE: the `mcp_server_meta.bearer_present` column
+/// is intentionally NOT read here (nor anywhere): a stale flag would claim a
+/// credential exists when the keyring entry was cleared. Presence is resolved
+/// at read time from the keyring (see `bearer_present_for`).
 struct ServerMeta {
     auth_type: String,
     oauth_client_id: String,
@@ -184,11 +261,16 @@ struct ServerMeta {
     oauth_redirect_uri: String,
     allowed_tools: Vec<String>,
     denied_tools: Vec<String>,
-    bearer_present: bool,
+}
+
+/// True when this server has a bearer credential stored in the keyring.
+fn bearer_present_for(server_id: &str) -> bool {
+    kr_get(&format!("{}{}", BEARER_TOKEN_PREFIX, server_id)).is_some()
+        || kr_get(&format!("{}{}", OAUTH_TOKEN_PREFIX, server_id)).is_some()
 }
 
 fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, ServerMeta), String> {
-    let conn = open_db(app)?;
+    let conn = open_db(app).map_err(|e| format!("failed to open the database: {}", e))?;
     let row = conn
         .query_row(
             "SELECT id, name, transport, url, enabled FROM mcp_servers WHERE id = ?1",
@@ -203,16 +285,18 @@ fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, Se
                 })
             },
         )
-        .map_err(|_| format!("MCP server not found: {}", server_id))?;
-    let meta = conn
+        .map_err(|e| format!("failed to load MCP server {}: {}", server_id, e))?;
+    let meta = match conn
         .query_row(
             "SELECT auth_type, oauth_client_id, oauth_authorization_url, oauth_token_url,
-                    oauth_scopes, oauth_redirect_uri, allowed_tools, denied_tools, bearer_present
+                    oauth_scopes, oauth_redirect_uri, allowed_tools, denied_tools
              FROM mcp_server_meta WHERE server_id = ?1",
             [server_id],
             |r| {
                 let allowed: String = r.get(6)?;
                 let denied: String = r.get(7)?;
+                let allowed_tools = json_string_list(&allowed).map_err(sql_err)?;
+                let denied_tools = json_string_list(&denied).map_err(sql_err)?;
                 Ok(ServerMeta {
                     auth_type: r.get(0)?,
                     oauth_client_id: r.get(1)?,
@@ -220,13 +304,13 @@ fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, Se
                     oauth_token_url: r.get(3)?,
                     oauth_scopes: r.get(4)?,
                     oauth_redirect_uri: r.get(5)?,
-                    allowed_tools: json_string_list(&allowed),
-                    denied_tools: json_string_list(&denied),
-                    bearer_present: r.get::<_, i64>(8)? != 0,
+                    allowed_tools,
+                    denied_tools,
                 })
             },
-        )
-        .unwrap_or(ServerMeta {
+        ) {
+        Ok(m) => m,
+        Err(rusqlite::Error::QueryReturnedNoRows) => ServerMeta {
             auth_type: "none".to_string(),
             oauth_client_id: String::new(),
             oauth_authorization_url: String::new(),
@@ -235,9 +319,20 @@ fn load_server(app: &tauri::AppHandle, server_id: &str) -> Result<(ServerRow, Se
             oauth_redirect_uri: String::new(),
             allowed_tools: Vec::new(),
             denied_tools: Vec::new(),
-            bearer_present: false,
-        });
+        },
+        Err(e) => {
+            return Err(format!(
+                "failed to load MCP server {} metadata: {}",
+                server_id, e
+            ))
+        }
+    };
     Ok((row, meta))
+}
+
+/// Wrap a message as a rusqlite error so `?` works inside `query_row` closures.
+fn sql_err(msg: String) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(msg)))
 }
 
 fn validate_server_input(input: &McpServerInput) -> Result<(), String> {
@@ -870,11 +965,13 @@ pub async fn mcp_server_list(app: tauri::AppHandle) -> Result<Vec<McpServerView>
                 String::new(),
                 String::new(),
                 String::new(),
-                Vec::new(),
-                Vec::new(),
+                Ok(Vec::new()),
+                Ok(Vec::new()),
                 false,
             ));
         let (auth_type, client_id, auth_url, token_url, allowed, denied, bearer_present) = meta;
+        let allowed = allowed.unwrap_or_default();
+        let denied = denied.unwrap_or_default();
         let tool_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM tools WHERE mcp_server = ?1",
