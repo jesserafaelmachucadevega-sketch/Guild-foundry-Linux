@@ -1,7 +1,8 @@
 [package]
 name = "guild-foundry-ai"
 version = "0.1.0"
-description = "Guild Foundry AI — native Linux AI developer workstation (Tauri 2)"
+default-run = "guild-foundry-ai"
+description = "Guild Foundry AI — native Linux AI developer workstation (Tauri v2)"
 edition = "2021"
 rust-version = "1.80"
 
