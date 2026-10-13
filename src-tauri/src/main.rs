@@ -219,6 +219,7 @@ fn main() {
             integrations::document::upload_save_b64,
             integrations::email::email_test_connection,
             integrations::calendar::calendar_test_connection,
+            integrations::twilio::twilio_test_connection,
             // Phase 7 — MCP gateway + permissions
             mcp::mcp_server_add,
             mcp::mcp_server_update,

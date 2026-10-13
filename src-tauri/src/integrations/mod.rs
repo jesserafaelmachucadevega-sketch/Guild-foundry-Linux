@@ -19,8 +19,10 @@
 // the existing media key (`gfa-media-fal-key`, see `crate::media`).
 
 pub mod calendar;
+pub mod cloud;
 pub mod document;
 pub mod email;
+pub mod twilio;
 pub mod web;
 
 use std::sync::OnceLock;

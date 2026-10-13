@@ -374,6 +374,133 @@ function CalendarCard({ onToast }: { onToast: (msg: string) => void }): React.Re
   );
 }
 
+function PhoneCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [accountSid, setAccountSid] = useState('');
+  const [fromNumber, setFromNumber] = useState('');
+  const [label, setLabel] = useState('');
+  const [token, setToken] = useState('');
+  const [hasToken, setHasToken] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState<AccountTest | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void invoke<Record<string, unknown> | null>('settings_get', { key: 'phone.twilio' })
+      .then((v) => {
+        if (!live || !v || typeof v !== 'object') return;
+        if (typeof v.account_sid === 'string') setAccountSid(v.account_sid);
+        if (typeof v.from_number === 'string') setFromNumber(v.from_number);
+        if (typeof v.label === 'string') setLabel(v.label);
+      })
+      .catch(() => {});
+    void invoke<string[]>('secret_list_keys')
+      .then((keys) => {
+        if (live) setHasToken(keys.includes('gfa-twilio:auth'));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const save = async (): Promise<void> => {
+    if (!accountSid.trim() || !fromNumber.trim()) {
+      onToast('Account SID and your Twilio phone number are required');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('settings_set', {
+        key: 'phone.twilio',
+        value: {
+          label: label.trim() || 'Twilio',
+          account_sid: accountSid.trim(),
+          from_number: fromNumber.trim(),
+        },
+      });
+      if (token.trim()) {
+        await invoke('secret_set', { key: 'gfa-twilio:auth', value: token.trim() });
+        setHasToken(true);
+        setToken('');
+      }
+      setTest(null);
+      onToast(hasToken || token.trim() ? 'Phone provider saved' : 'Phone provider saved — now add the auth token');
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testConn = async (): Promise<void> => {
+    setBusy(true);
+    setTest(null);
+    try {
+      const r = await invoke<AccountTest>('twilio_test_connection');
+      setTest(r);
+      onToast(r.ok ? `Phone: ${r.detail}` : `Phone: ${r.detail}`);
+    } catch (e) {
+      setTest({ ok: false, layman: 'Test failed', detail: errText(e), latency_ms: 0 });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (): Promise<void> => {
+    if (!window.confirm('Remove the phone provider? Calling and texting will stop working.')) return;
+    try {
+      await invoke('secret_delete', { key: 'gfa-twilio:auth' }).catch(() => {});
+      await invoke('settings_set', { key: 'phone.twilio', value: null });
+      setHasToken(false);
+      setTest(null);
+      onToast('Phone provider removed');
+    } catch (e) {
+      onToast(errText(e));
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Phone &amp; SMS</strong>
+        <Badge test={test} busy={busy} />
+      </div>
+      <p className="conn-tagline">The agent sends texts and places calls from your number — phone.sms_send, phone.call_start, phone.call_status.</p>
+      <p className="conn-note">
+        Requires a Twilio account with a phone number. Texts and calls cost real money per use and are always approval-gated before
+        anything is sent.
+      </p>
+      <label className="gf-label" style={labelStyle}>
+        Display name (optional)
+        <input className="gf-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My phone" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        Account SID
+        <input className="gf-input" value={accountSid} onChange={(e) => setAccountSid(e.target.value)} placeholder="AC…" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        Your phone number (E.164)
+        <input className="gf-input" value={fromNumber} onChange={(e) => setFromNumber(e.target.value)} placeholder="+15551234567" />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        Auth token {hasToken ? '(saved — type to replace)' : ''}
+        <input className="gf-input" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={hasToken ? '••••••••' : 'auth token'} />
+      </label>
+      <div className="gf-row" style={{ marginTop: 8 }}>
+        <button className="gf-btn gf-btn-sm" onClick={() => void save()} disabled={busy}>
+          Save
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void testConn()} disabled={busy || !hasToken} title={hasToken ? 'Verify credentials now' : 'Save the auth token first'}>
+          Test
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => void remove()} disabled={busy}>
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AccountCards({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   return (
     <>
@@ -381,6 +508,7 @@ export function AccountCards({ onToast }: { onToast: (msg: string) => void }): R
       <div className="conn-grid">
         <EmailCard onToast={onToast} />
         <CalendarCard onToast={onToast} />
+        <PhoneCard onToast={onToast} />
       </div>
     </>
   );

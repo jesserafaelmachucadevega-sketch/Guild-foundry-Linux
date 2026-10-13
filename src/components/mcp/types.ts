@@ -113,6 +113,7 @@ export const PERM_DOMAINS: PermDomainMeta[] = [
   { id: 'browser', label: 'Browser', blurb: 'Drive web pages and read page content' },
   { id: 'credentials', label: 'Credentials', blurb: 'Read or use stored secrets and tokens' },
   { id: 'external_apis', label: 'External APIs', blurb: 'Call third-party APIs beyond model providers' },
+  { id: 'telephony', label: 'Phone & SMS', blurb: 'Send texts and place calls via your phone provider (costs money per use)' },
   { id: 'media', label: 'Media generation', blurb: 'Generate images via the Fal API (costs per image)' },
 ];
 

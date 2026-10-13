@@ -347,7 +347,7 @@ fn tool_registry() -> Vec<ToolDef> {
         // Cloud storage tools
         ToolDef {
             name: "cloud.drive_list".into(),
-            description: "List files and folders in a connected cloud drive (Google Drive, OneDrive, Dropbox). Requires the drive to be connected in Settings → Cloud Drives."
+            description: "List files and folders in a connected cloud drive. Routes to your connected drive service (Google Drive / OneDrive / Dropbox MCP server); connect it under Connections first."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -363,7 +363,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "cloud.drive_read".into(),
-            description: "Download and read a file from a connected cloud drive. Returns text content for text files, base64 for binary."
+            description: "Download and read a file from a connected cloud drive (routed to your connected drive MCP service)."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -379,7 +379,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "cloud.drive_write".into(),
-            description: "Upload or update a file in a connected cloud drive. Creates new file or overwrites existing."
+            description: "Upload or update a file in a connected cloud drive (routed to your connected drive MCP service)."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -397,7 +397,7 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "cloud.drive_search".into(),
-            description: "Search for files in a connected cloud drive by name or content."
+            description: "Search files in a connected cloud drive (routed to your connected drive MCP service)."
                 .into(),
             schema: schema(
                 serde_json::json!({
@@ -625,6 +625,52 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "external_apis".into(),
             ready: true,
         },
+        // Telephony tools
+        ToolDef {
+            name: "phone.sms_send".into(),
+            description: "Send an SMS text message from your phone number. Requires the phone provider configured in Connections. Approval-gated — each message costs money."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "to": { "type": "string", "description": "Recipient phone number in E.164 format (e.g. +15551234567)." },
+                    "body": { "type": "string", "description": "Message text (up to 1600 characters)." }
+                }),
+                &["to", "body"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "telephony".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "phone.call_start".into(),
+            description: "Start an outbound phone call. Provide 'message' (spoken aloud when answered) or 'url' (a TwiML document). Approval-gated — calls cost money."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "to": { "type": "string", "description": "Phone number to call in E.164 format." },
+                    "message": { "type": "string", "description": "What the agent should say when the call connects." },
+                    "url": { "type": "string", "description": "TwiML URL to fetch instead of a spoken message." }
+                }),
+                &["to"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "telephony".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "phone.call_status".into(),
+            description: "Check a call's status by sid, or list the 10 most recent calls when no sid is given."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "call_sid": { "type": "string", "description": "Call sid to look up (optional — omit to list recent calls)." }
+                }),
+                &[],
+            ),
+            risk: RiskLevel::Low,
+            domain: "telephony".into(),
+            ready: true,
+        },
         // MCP tool calling (generic)
         ToolDef {
             name: "mcp.call_tool".into(),
@@ -703,6 +749,8 @@ fn tool_domain(tool: &str) -> &str {
         "mcp"
     } else if tool.starts_with("web.") || tool.starts_with("github.") || tool.starts_with("hf.") || tool.starts_with("email.") || tool.starts_with("calendar.") || tool.starts_with("cloud.") {
         "external_apis"
+    } else if tool.starts_with("phone.") {
+        "telephony"
     } else if tool.starts_with("media.") {
         "media"
     } else if tool.starts_with("user.") || tool.starts_with("artifact.") || tool.starts_with("avatar.") {
@@ -1413,11 +1461,39 @@ pub fn tool_execute(
         }
         "github.get_user" => crate::integrations::github_get_user(),
         "hf.whoami" => crate::integrations::hf_whoami(),
-        // Cloud drive tools
-        "cloud.drive_list" => Err("cloud.drive_list: not implemented - requires cloud drive integration module".to_string()),
-        "cloud.drive_read" => Err("cloud.drive_read: not implemented - requires cloud drive integration module".to_string()),
-        "cloud.drive_write" => Err("cloud.drive_write: not implemented - requires cloud drive integration module".to_string()),
-        "cloud.drive_search" => Err("cloud.drive_search: not implemented - requires cloud drive integration module".to_string()),
+        // Cloud drive tools (routed to connected MCP services)
+        "cloud.drive_list" => {
+            let drive_id = arg_str(&args, "drive_id")?;
+            crate::integrations::cloud::drive_operation(&app, &drive_id, "list", &args)
+        }
+        "cloud.drive_read" => {
+            let drive_id = arg_str(&args, "drive_id")?;
+            crate::integrations::cloud::drive_operation(&app, &drive_id, "read", &args)
+        }
+        "cloud.drive_write" => {
+            let drive_id = arg_str(&args, "drive_id")?;
+            crate::integrations::cloud::drive_operation(&app, &drive_id, "write", &args)
+        }
+        "cloud.drive_search" => {
+            let drive_id = arg_str(&args, "drive_id")?;
+            crate::integrations::cloud::drive_operation(&app, &drive_id, "search", &args)
+        }
+        // Telephony tools
+        "phone.sms_send" => {
+            let to = arg_str(&args, "to")?;
+            let body = arg_str(&args, "body")?;
+            crate::integrations::twilio::sms_send(&app, &to, &body)
+        }
+        "phone.call_start" => {
+            let to = arg_str(&args, "to")?;
+            let url = args.get("url").and_then(|v| v.as_str());
+            let message = args.get("message").and_then(|v| v.as_str());
+            crate::integrations::twilio::call_start(&app, &to, url, message)
+        }
+        "phone.call_status" => {
+            let sid = args.get("call_sid").and_then(|v| v.as_str());
+            crate::integrations::twilio::call_status(&app, sid)
+        }
         // Email tools
         "email.list" => {
             let folder = args.get("folder").and_then(|v| v.as_str());

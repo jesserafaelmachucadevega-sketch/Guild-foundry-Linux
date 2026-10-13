@@ -64,7 +64,7 @@ const SSE_IDLE_DEADLINE: Duration = Duration::from_secs(120);
 /// stops sending cursors cannot loop forever.
 const MAX_TOOL_PAGES: usize = 50;
 
-const PERM_DOMAINS: [&str; 9] = [
+const PERM_DOMAINS: [&str; 10] = [
     "filesystem",
     "network",
     "shell",
@@ -73,6 +73,7 @@ const PERM_DOMAINS: [&str; 9] = [
     "browser",
     "credentials",
     "external_apis",
+    "telephony",
     "media",
 ];
 const PERM_LEVELS: [&str; 5] = [
