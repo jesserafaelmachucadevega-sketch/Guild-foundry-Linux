@@ -44,6 +44,7 @@ import { AvatarStatus, type AvatarActivity, type AvatarGender } from '../avatar/
 import { VoiceControls } from '../voice/VoiceControls';
 import { getSpeechEnabled, speakText } from '../voice/speech';
 import { MemoryTabs } from '../memory/MemoryTabs';
+import { AvatarPicker } from '../avatar/AvatarPicker';
 import './agent.css';
 
 interface Props {
@@ -55,18 +56,24 @@ const DEFAULT_AGENT_PROMPT = `You are the user's personal AI companion inside Gu
 Help with daily work: email triage, calendar and reminders, web research, creditor outreach scripts,
 files, projects, and media creation. Be warm, direct, and concise.
 
-You have tools. To call one, emit a fenced block exactly like this and nothing else on those lines:
+You have tools — use them. To call one, emit a fenced block exactly like this and nothing else on those lines:
 
 \`\`\`tool_call
 {"tool": "tool.name", "args": {...}}
 \`\`\`
 
 One call per block; you may emit several blocks in one turn. After each block you receive
-TOOL RESULT and continue. Never invent tool names or file paths — only call tools from your
-capability manifest. Reads run silently. Anything that sends, deletes, publishes, spends
-money, or changes credentials needs the user's approval: propose the action and wait.
-When asked for an image or video, call media.generate_image / media.generate_video in the
-background and confirm briefly once the result is rendered — do not paste raw JSON.`;
+TOOL RESULT and continue.
+
+RULES (mandatory):
+- Never invent tool results, file contents, or actions. Only report what TOOL RESULT actually returned.
+- Never say you cannot do something before trying the right tool. If a tool is listed as
+  NEEDS SETUP, tell the user exactly where to connect it — do not pretend it works.
+- Never claim an email/call/message was sent unless the tool returned success.
+- Reads run silently. Anything that sends, deletes, publishes, spends money, or changes
+  credentials needs the user's approval: propose the action and wait.
+- When asked for an image or video, call media.generate_image / media.generate_video and
+  confirm briefly once the result is rendered — do not paste raw JSON.`;
 
 interface MediaAtt {
   kind: 'image' | 'video';
@@ -93,6 +100,12 @@ interface ThreadMsg {
   attachText?: string;
   /** Emoji reactions on this message. */
   reactions?: Record<string, number>;
+}
+
+interface SamplingConfig {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
 }
 
 interface TraceEntry {
@@ -211,6 +224,76 @@ function MediaView({ media }: { media: MediaAtt }): React.ReactElement {
   );
 }
 
+function SamplingEditor({
+  providerId,
+  sampling,
+  onChange,
+}: {
+  providerId: string;
+  sampling: SamplingConfig;
+  onChange: (next: SamplingConfig) => void;
+}): React.ReactElement {
+  const [temperature, setTemperature] = useState(sampling.temperature?.toString() ?? '');
+  const [topP, setTopP] = useState(sampling.topP?.toString() ?? '');
+  const [topK, setTopK] = useState(sampling.topK?.toString() ?? '');
+
+  useEffect(() => {
+    setTemperature(sampling.temperature?.toString() ?? '');
+    setTopP(sampling.topP?.toString() ?? '');
+    setTopK(sampling.topK?.toString() ?? '');
+  }, [sampling, providerId]);
+
+  const parse = (s: string, min: number, max: number): number | undefined => {
+    if (!s.trim()) return undefined;
+    const n = Number(s);
+    if (!Number.isFinite(n)) return undefined;
+    return Math.min(max, Math.max(min, n));
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+      <label className="gf-label">
+        Temperature (0–2)
+        <input
+          className="gf-input"
+          value={temperature}
+          onChange={(e) => setTemperature(e.target.value)}
+          placeholder="provider default"
+        />
+      </label>
+      <label className="gf-label">
+        Top P (0–1)
+        <input className="gf-input" value={topP} onChange={(e) => setTopP(e.target.value)} placeholder="provider default" />
+      </label>
+      <label className="gf-label">
+        Top K (0–200)
+        <input className="gf-input" value={topK} onChange={(e) => setTopK(e.target.value)} placeholder="provider default" />
+      </label>
+      <div className="gf-row" style={{ gap: 8, marginTop: 4 }}>
+        <button
+          className="gf-btn gf-btn-sm"
+          onClick={() =>
+            onChange({
+              temperature: parse(temperature, 0, 2),
+              topP: parse(topP, 0, 1),
+              topK: parse(topK, 0, 200),
+            })
+          }
+        >
+          Save sampling
+        </button>
+        <button className="gf-btn gf-btn-sm" onClick={() => onChange({})}>
+          Clear
+        </button>
+      </div>
+      <p className="conn-note" style={{ margin: '4px 0 0' }}>
+        Applies to every request for this provider. Local GGUF models honor all three; cloud providers apply the ones
+        they support.
+      </p>
+    </div>
+  );
+}
+
 export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement {
   const [tab, setTab] = useState<'chat' | 'memory'>('chat');
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
@@ -232,6 +315,7 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
   const [toolDomains, setToolDomains] = useState<Record<string, string>>({});
   const [agentPrompt, setAgentPrompt] = useState(DEFAULT_AGENT_PROMPT);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
+  const [sampling, setSampling] = useState<SamplingConfig>({});
   const [replyTo, setReplyTo] = useState<ThreadMsg | null>(null);
   const [reactions, setReactions] = useState<Record<string, Record<string, number>>>({});
   const [showDocUpload, setShowDocUpload] = useState(false);
@@ -350,6 +434,25 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
   useEffect(() => {
     if (providerId) void loadModels(providerId);
   }, [providerId, loadModels]);
+
+  // Sampling settings are per provider (temperature / top-p / top-k).
+  useEffect(() => {
+    if (!desktop || !providerId) {
+      setSampling({});
+      return;
+    }
+    void invoke<Record<string, unknown> | null>('settings_get', { key: `sampling.${providerId}` })
+      .then((v) => {
+        if (!v || typeof v !== 'object') {
+          setSampling({});
+          return;
+        }
+        const num = (x: unknown): number | undefined =>
+          typeof x === 'number' && Number.isFinite(x) ? x : undefined;
+        setSampling({ temperature: num(v.temperature), topP: num(v.topP), topK: num(v.topK) });
+      })
+      .catch(() => setSampling({}));
+  }, [desktop, providerId]);
 
   useEffect(() => {
     const container = threadContainerRef.current;
@@ -574,12 +677,17 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
         agentId: 'agent-harness',
         maxTurns: 12,
         history,
+        params: {
+          temperature: sampling.temperature,
+          topP: sampling.topP,
+          topK: sampling.topK,
+        },
         userMessage: userText,
         onEvent: handleEvent,
       });
       cancelRef.current = handle.cancel;
     },
-    [running, desktop, providerId, modelId, sessionId, handleEvent, onToast, pushTrace, buildHistory],
+    [running, desktop, providerId, modelId, sessionId, handleEvent, onToast, pushTrace, buildHistory, sampling],
   );
 
   const send = useCallback(
@@ -617,6 +725,41 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
       startLoop(`[${artifact.kind} answer — ${label}]: ${answer}`);
     },
     [pushTrace, startLoop],
+  );
+
+  const saveAgentPrompt = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim() || DEFAULT_AGENT_PROMPT;
+      setAgentPrompt(trimmed);
+      try {
+        let prompts: Record<string, string> = {};
+        try {
+          prompts = (await invoke<Record<string, string>>('settings_load_prompts')) ?? {};
+        } catch {
+          prompts = {};
+        }
+        prompts['agent-harness'] = trimmed;
+        await invoke('settings_save_prompts', { prompts });
+        onToast('Agent prompt saved');
+      } catch (e) {
+        onToast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [onToast],
+  );
+
+  const applySampling = useCallback(
+    async (next: SamplingConfig) => {
+      setSampling(next);
+      if (!providerId) return;
+      try {
+        await invoke('settings_set', { key: `sampling.${providerId}`, value: next });
+        onToast('Sampling settings saved');
+      } catch (e) {
+        onToast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [providerId, onToast],
   );
 
   const readFileBase64 = useCallback((file: File): Promise<string> => {
@@ -901,8 +1044,44 @@ export function AgentHarness({ onToast, onNavigate }: Props): React.ReactElement
               <button className="gf-icon-btn" onClick={newChat} title="Start a new conversation">
                 New chat
               </button>
+              <button
+                className="gf-icon-btn"
+                onClick={() => setShowAgentSettings((s) => !s)}
+                title="Agent settings — prompt, avatar, sampling"
+              >
+                {showAgentSettings ? 'Hide settings' : 'Settings'}
+              </button>
             </div>
           </div>
+
+          {showAgentSettings && (
+            <div className="agent-settings">
+              <div className="agent-settings-col">
+                <div className="gf-label">Agent system prompt (editable)</div>
+                <textarea
+                  className="gf-input"
+                  rows={8}
+                  value={agentPrompt}
+                  onChange={(e) => setAgentPrompt(e.target.value)}
+                />
+                <div className="gf-row" style={{ gap: 8, marginTop: 6 }}>
+                  <button className="gf-btn gf-btn-sm" onClick={() => void saveAgentPrompt(agentPrompt)}>
+                    Save prompt
+                  </button>
+                  <button className="gf-btn gf-btn-sm" onClick={() => void saveAgentPrompt(DEFAULT_AGENT_PROMPT)}>
+                    Reset to default
+                  </button>
+                </div>
+              </div>
+              <div className="agent-settings-col">
+                <AvatarPicker onToast={onToast} />
+              </div>
+              <div className="agent-settings-col">
+                <div className="gf-label">Sampling — {providerId || 'select a provider first'}</div>
+                <SamplingEditor providerId={providerId} sampling={sampling} onChange={(next) => void applySampling(next)} />
+              </div>
+            </div>
+          )}
 
           {providers.length === 0 && (
             <div className="agent-notice">

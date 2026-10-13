@@ -346,3 +346,24 @@
 .agent-divider:hover {
   background: var(--gf-gold);
 }
+
+/* Agent settings panel (prompt / avatar / sampling) */
+.agent-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--gf-border);
+  background: var(--gf-panel);
+  margin: 0 0 8px;
+}
+.agent-settings-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.agent-settings textarea.gf-input {
+  min-height: 120px;
+  font-family: inherit;
+  resize: vertical;
+}

@@ -12,7 +12,8 @@
 // their status via onEvent; the host resumes the loop after the user acts.
 
 import { invoke } from './api';
-import { streamChat, type ChatMsg } from './chat';
+import { streamChat, type ChatMsg, type ChatParams } from './chat';
+import { detectAdapter, validateCall, fencedAdapter } from './toolAdapters';
 
 export interface ToolCall {
   tool: string;
@@ -81,6 +82,8 @@ export interface ToolLoopOptions {
    * up exactly where the last one left off.
    */
   history?: ChatMsg[];
+  /** Sampling parameters forwarded to every turn for this run. */
+  params?: ChatParams;
   /** First user message. Defaults to a generic task-start prompt. */
   userMessage?: string;
   onEvent: (e: ToolLoopEvent) => void;
@@ -92,40 +95,19 @@ function newCallId(): string {
 }
 
 /**
- * Extract ```tool_call fenced JSON blocks: `{tool, args}`.
- * Malformed blocks are NOT silently dropped — they produce a synthetic
- * `bad_args` result so the model can see its mistake and retry.
+ * Extract tool calls from fenced ```tool_call blocks (the canonical
+ * dialect). Kept for callers that want the raw fenced parse; the loop
+ * itself goes through the full adapter registry (toolAdapters.ts).
  */
 export function parseToolCalls(text: string): Array<ToolCall | { malformed: string }> {
-  const calls: Array<ToolCall | { malformed: string }> = [];
-  const re = /```tool_call\s*\n([\s\S]*?)```/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    try {
-      const parsed = JSON.parse(m[1].trim()) as { tool?: unknown; args?: unknown };
-      if (parsed && typeof parsed.tool === 'string') {
-        calls.push({
-          tool: parsed.tool,
-          args:
-            parsed.args && typeof parsed.args === 'object'
-              ? (parsed.args as Record<string, unknown>)
-              : {},
-        });
-      } else {
-        calls.push({ malformed: m[1].trim() });
-      }
-    } catch {
-      calls.push({ malformed: m[1].trim() });
-    }
-  }
-  return calls;
+  return fencedAdapter.parse(text);
 }
 
 function malformedResult(block: string): ToolExecResult {
   return {
     ok: false,
     output: null,
-    error: `could not parse tool_call block as JSON: ${block.slice(0, 200)}`,
+    error: `tool call rejected: ${block.slice(0, 300)}`,
     duration_ms: 0,
     needs_approval: false,
     needs_user: false,
@@ -145,7 +127,7 @@ function collectTurn(
   return new Promise((resolve, reject) => {
     let text = '';
     void streamChat(
-      { providerId: opts.providerId, modelId: opts.modelId, messages },
+      { providerId: opts.providerId, modelId: opts.modelId, messages, params: opts.params },
       {
         onDelta: (d) => {
           text += d;
@@ -222,7 +204,17 @@ export function runToolLoop(opts: ToolLoopOptions): { cancel: () => void } {
         opts.onEvent({ type: 'assistant_done', turn, text });
         messages.push({ role: 'assistant', content: text });
 
-        const calls = parseToolCalls(text);
+        // Stage 2 + 3: parse whatever dialect the model emitted, then
+        // validate against the session manifest; invalid calls bounce back
+        // as structured errors so the model self-corrects next turn.
+        const adapter = detectAdapter(text);
+        const calls: Array<ToolCall | { malformed: string }> = adapter
+          .parse(text)
+          .map((parsed) => {
+            const v = validateCall(parsed, handshake.manifest);
+            if (!v.ok) return { malformed: v.error ?? 'invalid tool call' };
+            return v.call as ToolCall;
+          });
         if (calls.length === 0) {
           opts.onEvent({ type: 'loop_end', status: 'done', finalText });
           return;
@@ -236,7 +228,7 @@ export function runToolLoop(opts: ToolLoopOptions): { cancel: () => void } {
             opts.onEvent({ type: 'tool_result', callId, result });
             messages.push({
               role: 'user',
-              content: `TOOL RESULT [unparsed tool_call]:\n${JSON.stringify(result)}`,
+              content: `TOOL RESULT [invalid tool_call]:\n${JSON.stringify(result)}`,
             });
             continue;
           }

@@ -17,6 +17,14 @@ export interface ChatParams {
   temperature?: number;
   maxTokens?: number;
   reasoningEffort?: 'low' | 'medium' | 'high';
+  /** Nucleus sampling (cloud + local). */
+  topP?: number;
+  /** Top-K sampling (Anthropic/Google/Ollama/GGUF honor it; OpenAI ignores it). */
+  topK?: number;
+  seed?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  stop?: string[];
 }
 
 export interface StreamCallbacks {

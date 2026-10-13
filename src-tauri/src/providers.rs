@@ -181,6 +181,12 @@ pub struct ChatParams {
     temperature: Option<f32>,
     max_tokens: Option<u32>,
     reasoning_effort: Option<String>,
+    top_p: Option<f32>,
+    top_k: Option<u32>,
+    seed: Option<u64>,
+    presence_penalty: Option<f32>,
+    frequency_penalty: Option<f32>,
+    stop: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -1141,6 +1147,17 @@ fn build_chat_target(
             if let Some(t) = params.temperature {
                 body["temperature"] = serde_json::json!(t);
             }
+            if let Some(p) = params.top_p {
+                body["top_p"] = serde_json::json!(p);
+            }
+            if let Some(k) = params.top_k {
+                body["top_k"] = serde_json::json!(k);
+            }
+            if let Some(stop) = params.stop.as_ref() {
+                if !stop.is_empty() {
+                    body["stop_sequences"] = serde_json::json!(stop);
+                }
+            }
             Ok(ChatTarget {
                 url: join_url(&cfg.base_url, "/v1/messages"),
                 headers: vec![
@@ -1186,6 +1203,20 @@ fn build_chat_target(
             if let Some(n) = params.max_tokens {
                 gen["maxOutputTokens"] = serde_json::json!(n);
             }
+            if let Some(p) = params.top_p {
+                gen["topP"] = serde_json::json!(p);
+            }
+            if let Some(k) = params.top_k {
+                gen["topK"] = serde_json::json!(k);
+            }
+            if let Some(s) = params.seed {
+                gen["seed"] = serde_json::json!(s);
+            }
+            if let Some(stop) = params.stop.as_ref() {
+                if !stop.is_empty() {
+                    gen["stopSequences"] = serde_json::json!(stop);
+                }
+            }
             body["generationConfig"] = gen;
             let (suffix, extra): (&str, &[(&str, &str)]) = if stream {
                 (":streamGenerateContent", &[("alt", "sse")])
@@ -1212,6 +1243,26 @@ fn build_chat_target(
             }
             if let Some(n) = params.max_tokens {
                 options["num_predict"] = serde_json::json!(n);
+            }
+            if let Some(p) = params.top_p {
+                options["top_p"] = serde_json::json!(p);
+            }
+            if let Some(k) = params.top_k {
+                options["top_k"] = serde_json::json!(k);
+            }
+            if let Some(s) = params.seed {
+                options["seed"] = serde_json::json!(s);
+            }
+            if let Some(pp) = params.presence_penalty {
+                options["presence_penalty"] = serde_json::json!(pp);
+            }
+            if let Some(fp) = params.frequency_penalty {
+                options["frequency_penalty"] = serde_json::json!(fp);
+            }
+            if let Some(stop) = params.stop.as_ref() {
+                if !stop.is_empty() {
+                    options["stop"] = serde_json::json!(stop);
+                }
             }
             let body = serde_json::json!({
                 "model": model_id,
@@ -1241,6 +1292,23 @@ fn build_chat_target(
             }
             if let Some(n) = params.max_tokens {
                 body["max_tokens"] = serde_json::json!(n);
+            }
+            if let Some(p) = params.top_p {
+                body["top_p"] = serde_json::json!(p);
+            }
+            if let Some(s) = params.seed {
+                body["seed"] = serde_json::json!(s);
+            }
+            if let Some(pp) = params.presence_penalty {
+                body["presence_penalty"] = serde_json::json!(pp);
+            }
+            if let Some(fp) = params.frequency_penalty {
+                body["frequency_penalty"] = serde_json::json!(fp);
+            }
+            if let Some(stop) = params.stop.as_ref() {
+                if !stop.is_empty() {
+                    body["stop"] = serde_json::json!(stop);
+                }
             }
             if cfg.kind == "openai" {
                 if let Some(e) = params.reasoning_effort.as_deref() {
