@@ -154,14 +154,18 @@ body {
 
 /* ---------- Header / view switcher ---------- */
 .gf-header {
-  height: 68px;
-  min-height: 68px;
+  height: 132px;
+  min-height: 132px;
   background: var(--gf-panel);
   border-bottom: 1px solid var(--gf-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+}
+.gf-app.view-compact .gf-header {
+  height: 76px;
+  min-height: 76px;
 }
 
 .gf-view-switcher {
@@ -444,11 +448,15 @@ body {
   line-height: 1.5;
 }
 .gf-logo {
-  height: 60px;
+  height: 120px;
   width: auto;
   display: block;
   user-select: none;
   -webkit-user-drag: none;
+}
+/* Compact window (480x800): keep the header usable. */
+.gf-app.view-compact .gf-logo {
+  height: 64px;
 }
 .gf-muted { color: var(--gf-muted); }
 .gf-gold-text { color: var(--gf-gold); }

@@ -79,33 +79,42 @@ export const listModels = (providerId: string): Promise<ModelInfo[]> =>
 export const refreshModels = (providerId: string): Promise<ModelInfo[]> =>
   invoke<ModelInfo[]>('provider_refresh_models', { provider_id: providerId });
 
+/**
+ * camelCase wire payload for `provider_upsert` — mirrors the Rust
+ * `ProviderUpsertPayload` struct (#[serde(rename_all = "camelCase")]) in
+ * src-tauri/src/providers.rs. Nested under the `payload` invoke key because
+ * the Rust command takes a single struct argument named `payload`.
+ */
+export interface ProviderUpsertPayload {
+  id?: string;
+  name: string;
+  kind: ProviderKind;
+  baseUrl?: string;
+  modelsPath?: string;
+  apiKey?: string;
+}
+
 export const upsertProvider = (p: {
   id?: string;
   name: string;
   kind: ProviderKind;
+  /** snake_case inputs are also accepted and mapped to the camelCase payload. */
   base_url?: string;
-  /** camelCase alias — mapped to `base_url` for the Rust IPC contract. */
   baseUrl?: string;
   models_path?: string;
-  /** camelCase alias — mapped to `models_path` for the Rust IPC contract. */
   modelsPath?: string;
   api_key?: string;
-  /** camelCase alias — mapped to `api_key`. */
   apiKey?: string;
 }): Promise<ProviderSummary> => {
-  // Tauri `provider_upsert` expects snake_case (see src-tauri/src/providers.rs).
-  // Accept camelCase aliases from callers and always invoke with snake_case.
-  const base_url = p.base_url ?? p.baseUrl ?? '';
-  const models_path = p.models_path ?? p.modelsPath ?? '/models';
-  const api_key = p.api_key ?? p.apiKey;
-  return invoke<ProviderSummary>('provider_upsert', {
+  const payload: ProviderUpsertPayload = {
     id: p.id,
     name: p.name,
     kind: p.kind,
-    base_url,
-    models_path,
-    api_key,
-  });
+    baseUrl: p.baseUrl ?? p.base_url,
+    modelsPath: p.modelsPath ?? p.models_path,
+    apiKey: p.apiKey ?? p.api_key,
+  };
+  return invoke<ProviderSummary>('provider_upsert', { payload });
 };
 
 export const deleteProvider = (providerId: string): Promise<void> =>
