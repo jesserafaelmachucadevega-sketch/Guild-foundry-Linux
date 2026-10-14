@@ -20,9 +20,9 @@ CAMEL = re.compile(r"[a-z]+[A-Z][A-Za-z0-9]*")
 
 def rust_commands():
     cmds = {}
-    for f in RS.glob("*.rs"):
+    for f in RS.rglob("*.rs"):
         text = f.read_text(errors="ignore")
-        for am in re.finditer(r"#\[tauri::command\]", text):
+        for am in re.finditer(r"#\[tauri::command(?:\([^)]*\))?\]", text):
             fm = re.search(
                 r"pub(?:\([^)]*\))?\s+(?:async\s+)?fn\s+(\w+)\s*\((.*?)\)",
                 text[am.end():am.end() + 3000],
