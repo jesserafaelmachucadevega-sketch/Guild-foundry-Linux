@@ -366,7 +366,7 @@ struct TermEvent {
 /// Start a long-running process. Returns the process id. Output lines are
 /// emitted as `terminal://output` events and kept in a ring buffer readable
 /// via `term_output`.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn term_start(
     app: tauri::AppHandle,
     project_root: String,
@@ -510,7 +510,7 @@ pub fn term_kill(id: String) -> Result<(), String> {
 // One-shot execute + classification commands
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn term_exec(
     project_root: String,
     cmd: String,

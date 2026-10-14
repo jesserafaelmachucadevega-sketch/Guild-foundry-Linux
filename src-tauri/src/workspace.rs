@@ -779,7 +779,7 @@ pub fn ws_project_root(app: tauri::AppHandle, root: Option<String>) -> Result<St
     Ok(r.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_list(
     app: tauri::AppHandle,
     project_root: String,
@@ -820,7 +820,7 @@ pub fn ws_list(
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_read(
     app: tauri::AppHandle,
     project_root: String,
@@ -830,7 +830,7 @@ pub fn ws_read(
     read_file(&root, &rel)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_write(
     app: tauri::AppHandle,
     project_root: String,
@@ -850,7 +850,7 @@ pub fn ws_write(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_create(
     app: tauri::AppHandle,
     project_root: String,
@@ -863,7 +863,7 @@ pub fn ws_create(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_delete(
     app: tauri::AppHandle,
     project_root: String,
@@ -885,7 +885,7 @@ pub fn ws_delete(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_rename(
     app: tauri::AppHandle,
     project_root: String,
@@ -915,7 +915,7 @@ pub fn ws_rename(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_move(
     app: tauri::AppHandle,
     project_root: String,
@@ -936,7 +936,7 @@ pub fn ws_move(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_search(
     app: tauri::AppHandle,
     project_root: String,
@@ -946,7 +946,7 @@ pub fn ws_search(
     search_files(&root, &query)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_diff(
     app: tauri::AppHandle,
     project_root: String,
@@ -959,7 +959,7 @@ pub fn ws_diff(
     Ok(unified_diff(&a, &b, &rel_a, &rel_b))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_patch(
     app: tauri::AppHandle,
     project_root: String,
@@ -976,7 +976,7 @@ pub fn ws_patch(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_snapshot(
     app: tauri::AppHandle,
     project_root: String,
@@ -992,7 +992,7 @@ pub fn ws_snapshot(
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_checkpoints(
     app: tauri::AppHandle,
     project_root: String,
@@ -1009,7 +1009,7 @@ pub struct SnapshotFile {
 }
 
 /// Preview: list files inside a snapshot with sizes and hashes.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_checkpoint_preview(
     app: tauri::AppHandle,
     project_root: String,
@@ -1051,7 +1051,7 @@ pub struct SnapshotChange {
 }
 
 /// Compare: diff a snapshot against the current working tree.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_checkpoint_diff(
     app: tauri::AppHandle,
     project_root: String,
@@ -1120,7 +1120,7 @@ pub fn ws_checkpoint_diff(
     Ok(changes)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ws_restore(
     app: tauri::AppHandle,
     project_root: String,

@@ -1213,7 +1213,7 @@ pub struct CapabilityManifest {
 /// - `requires_approval`: permission mode is ask_* (or nothing configured)
 /// - `unavailable`: backing module not ready yet (Phase 4/8 pending)
 /// - `available`: everything else
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn tool_handshake(app: tauri::AppHandle, session_id: String) -> Result<Handshake, String> {
     let agent_id = format!("session:{}", session_id);
     let mut manifest = CapabilityManifest::default();
@@ -1289,7 +1289,7 @@ fn handshake_prompt(manifest: &CapabilityManifest) -> String {
 /// Execute one tool call. Permission check FIRST; then dispatch; then log.
 /// Returns a `ToolResult` (never throws for gate conditions) — the frontend
 /// tool loop always feeds the result back into the model.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn tool_execute(
     app: tauri::AppHandle,
     tool: String,

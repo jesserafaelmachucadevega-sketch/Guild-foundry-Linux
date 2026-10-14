@@ -128,7 +128,7 @@ pub struct GitRemote {
 // Commands
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_status(
     project_root: String,
 ) -> Result<Vec<GitFileStatus>, String> {
@@ -155,7 +155,7 @@ pub async fn git_status(
     Ok(files)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_diff(
     project_root: String,
     staged: bool,
@@ -180,7 +180,7 @@ pub async fn git_diff(
     Ok(out.stdout)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_log(
     project_root: String,
     limit: Option<u32>,
@@ -213,7 +213,7 @@ pub async fn git_log(
     Ok(commits)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_branch(
     project_root: String,
 ) -> Result<Vec<GitBranch>, String> {
@@ -240,7 +240,7 @@ pub async fn git_branch(
     Ok(branches)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_commit(
     project_root: String,
     message: String,
@@ -253,7 +253,7 @@ pub async fn git_commit(
     Ok(out.stdout.trim().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_stash(
     project_root: String,
     message: Option<String>,
@@ -274,7 +274,7 @@ pub async fn git_stash(
     Ok(out.stdout.trim().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_checkout(
     project_root: String,
     target: String,
@@ -286,7 +286,7 @@ pub async fn git_checkout(
     Ok(out.stdout.trim().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_merge(
     project_root: String,
     branch: String,
@@ -302,7 +302,7 @@ pub async fn git_merge(
     Ok(format!("{}{}", out.stdout, out.stderr).trim().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_remote(
     project_root: String,
 ) -> Result<Vec<GitRemote>, String> {
@@ -325,7 +325,7 @@ pub async fn git_remote(
     Ok(remotes)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_pull(
     project_root: String,
     remote: String,
@@ -344,7 +344,7 @@ pub async fn git_pull(
 /// Push is NEVER automatic. `confirmed` must be true — the frontend only sets
 /// it after the user passes the pre-push confirmation modal (remote, branch,
 /// commits, changed files, diff summary). Returns the push output on success.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn git_push(
     project_root: String,
     remote: String,

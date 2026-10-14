@@ -490,7 +490,7 @@ fn prune_audit_log(conn: &Connection) -> rusqlite::Result<()> {
 /// category, and metadata before the write; `meta_json` must parse as JSON
 /// (unparseable input is stored as `{"raw": ...}` rather than rejected, so a
 /// bad payload can never silently drop an audit event).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn sec_audit(
     app: tauri::AppHandle,
     level: String,
@@ -528,7 +528,7 @@ pub fn sec_audit(
 
 /// Queries audit entries, newest first. Filters are optional; `limit` defaults
 /// to 200 and is capped at 2000.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn sec_audit_query(
     app: tauri::AppHandle,
     level_filter: Option<String>,

@@ -217,7 +217,7 @@ fn crash_state_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String
 /// Persist a crash-recovery snapshot (JSON). Called by the frontend on a
 /// heartbeat / before risky operations. The payload is validated as JSON so a
 /// corrupt snapshot is rejected at write time, not discovered at recovery.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn crash_state_save(app: tauri::AppHandle, state_json: String) -> Result<(), String> {
     serde_json::from_str::<serde_json::Value>(&state_json)
         .map_err(|e| format!("refusing to save invalid crash-state JSON: {}", e))?;

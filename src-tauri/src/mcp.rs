@@ -1052,7 +1052,7 @@ pub async fn mcp_server_add(app: tauri::AppHandle, input: McpServerInput) -> Res
     Ok(id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_server_update(
     app: tauri::AppHandle,
     server_id: String,
@@ -1142,7 +1142,7 @@ fn upsert_meta(conn: &Connection, server_id: &str, input: &McpServerInput) -> Re
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_server_remove(app: tauri::AppHandle, server_id: String) -> Result<(), String> {
     let conn = open_db(&app)?;
     conn.execute("DELETE FROM mcp_servers WHERE id = ?1", [server_id.as_str()])
@@ -1256,12 +1256,12 @@ pub async fn mcp_server_list(app: tauri::AppHandle) -> Result<Vec<McpServerView>
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_server_enable(app: tauri::AppHandle, server_id: String) -> Result<(), String> {
     set_enabled(&app, &server_id, true)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_server_disable(app: tauri::AppHandle, server_id: String) -> Result<(), String> {
     set_enabled(&app, &server_id, false)
 }
@@ -1400,7 +1400,7 @@ async fn discover_tools(
     Ok((tools, server_info, protocol, latency_ms))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_connect(app: tauri::AppHandle, server_id: String) -> Result<McpConnectResult, String> {
     let (row, meta) = load_server(&app, &server_id)?;
     let started = Instant::now();
@@ -1414,7 +1414,7 @@ pub async fn mcp_connect(app: tauri::AppHandle, server_id: String) -> Result<Mcp
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_server_test(app: tauri::AppHandle, server_id: String) -> Result<McpTestResult, String> {
     let (row, meta) = load_server(&app, &server_id)?;
     let started = Instant::now();
@@ -1447,7 +1447,7 @@ pub async fn mcp_server_test(app: tauri::AppHandle, server_id: String) -> Result
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_list_tools(app: tauri::AppHandle, server_id: String) -> Result<Vec<McpToolInfo>, String> {
     let (row, meta) = load_server(&app, &server_id)?;
     let (mut tools, _info, _protocol, _lat) = discover_tools(&row, &meta).await?;
@@ -1462,7 +1462,7 @@ pub async fn mcp_list_tools(app: tauri::AppHandle, server_id: String) -> Result<
     Ok(tools)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_list_resources(app: tauri::AppHandle, server_id: String) -> Result<Value, String> {
     let (row, meta) = load_server(&app, &server_id)?;
     let mut client = build_client(&row, &meta)?;
@@ -1470,7 +1470,7 @@ pub async fn mcp_list_resources(app: tauri::AppHandle, server_id: String) -> Res
     client.call("resources/list", json!({})).await
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_list_prompts(app: tauri::AppHandle, server_id: String) -> Result<Value, String> {
     let (row, meta) = load_server(&app, &server_id)?;
     let mut client = build_client(&row, &meta)?;
@@ -1530,7 +1530,7 @@ pub async fn mcp_tool_registry_list(app: tauri::AppHandle) -> Result<Vec<Registr
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_tool_set_enabled(app: tauri::AppHandle, tool_name: String, enabled: bool) -> Result<(), String> {
     let conn = open_db(&app)?;
     let changed = conn
@@ -1560,7 +1560,7 @@ fn audit_entry(server_id: &str, tool: &str, args_json: &str, decision: &str, pol
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_call_tool(
     app: tauri::AppHandle,
     server_id: String,
@@ -1679,7 +1679,7 @@ async fn discover_oauth_metadata(server_url: &str) -> Option<Value> {
     http.get(&well_known).send().await.ok()?.json::<Value>().await.ok()
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_oauth_start(app: tauri::AppHandle, server_id: String) -> Result<OAuthStart, String> {
     let (row, meta) = load_server(&app, &server_id)?;
     if meta.auth_type != "oauth" {
@@ -1788,7 +1788,7 @@ pub async fn mcp_oauth_callback(
     Ok(OAuthCallbackResult { ok: true, expires_in })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn mcp_oauth_revoke(app: tauri::AppHandle, server_id: String) -> Result<OAuthRevokeResult, String> {
     let key = format!("{}{}", OAUTH_TOKEN_PREFIX, server_id);
     let raw = kr_get(&key);
@@ -2037,7 +2037,7 @@ pub async fn perm_grant(
 }
 
 /// Revoke a permission grant by ID.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn perm_revoke(app: tauri::AppHandle, grant_id: String) -> Result<(), String> {
     let conn = open_db(&app)?;
     let revoked_at = now_rfc3339();
@@ -2109,7 +2109,7 @@ pub async fn perm_list_grants(
 }
 
 /// Get effective permission level (considering temporal grants).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn perm_get_effective(
     app: tauri::AppHandle,
     domain: String,

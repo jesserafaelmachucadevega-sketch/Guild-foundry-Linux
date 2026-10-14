@@ -356,14 +356,14 @@ fn run_row_to_summary(conn: &Connection, run_id: &str) -> Result<RunSummary, Str
 }
 
 /// Current run state plus task counts and pending approvals.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn run_status(app: AppHandle, run_id: String) -> Result<RunSummary, String> {
     let conn = db_conn(&app)?;
     run_row_to_summary(&conn, &run_id)
 }
 
 /// Stop a run. No further transitions or task updates are accepted afterwards.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn run_cancel(app: AppHandle, run_id: String) -> Result<(), String> {
     let conn = db_conn(&app)?;
     let status: String = conn
@@ -384,7 +384,7 @@ pub fn run_cancel(app: AppHandle, run_id: String) -> Result<(), String> {
 
 /// Move a run to another state. Illegal transitions are rejected; every legal
 /// transition is recorded with a timestamp.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn run_transition(
     app: AppHandle,
     run_id: String,
@@ -457,7 +457,7 @@ pub fn run_recover(app: AppHandle) -> Result<Vec<RunSummary>, String> {
 }
 
 /// Transition log for a run (audit trail).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn run_transitions(app: AppHandle, run_id: String) -> Result<Vec<TransitionRow>, String> {
     let conn = db_conn(&app)?;
     let mut stmt = conn
@@ -538,7 +538,7 @@ fn assert_run_open(conn: &Connection, run_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn agent_task_create(
     app: AppHandle,
     run_id: String,
@@ -577,7 +577,7 @@ pub fn agent_task_create(
     Ok(task_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn agent_task_update(
     app: AppHandle,
     task_id: String,
@@ -627,7 +627,7 @@ pub fn agent_task_update(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn agent_task_get(app: AppHandle, task_id: String) -> Result<TaskRow, String> {
     let conn = db_conn(&app)?;
     task_row_by_id(&conn, &task_id)
@@ -654,7 +654,7 @@ fn task_row_by_id(conn: &Connection, task_id: &str) -> Result<TaskRow, String> {
     .map_err(|_| format!("task not found: {}", task_id))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn agent_task_list(app: AppHandle, run_id: String) -> Result<Vec<TaskRow>, String> {
     let conn = db_conn(&app)?;
     let mut stmt = conn
@@ -741,7 +741,7 @@ pub struct ApprovalPayload {
 
 /// Request human approval. Emits the `agent://approval` Tauri event so the
 /// frontend can pop the ApprovalGate modal. Returns the approval id.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn approval_request(
     app: AppHandle,
     run_id: String,
@@ -791,7 +791,7 @@ pub struct ApprovalRow {
 
 /// Resolve a pending approval. Emits `agent://approval-resolved` so any
 /// waiting orchestration loop can continue.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn approval_resolve(
     app: AppHandle,
     approval_id: String,
@@ -825,7 +825,7 @@ pub fn approval_resolve(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn approval_list(app: AppHandle, run_id: String) -> Result<Vec<ApprovalRow>, String> {
     let conn = db_conn(&app)?;
     let mut stmt = conn
@@ -861,7 +861,7 @@ pub struct RequirementsDoc {
     pub updated_at: String,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn requirements_get(app: AppHandle, run_id: String) -> Result<RequirementsDoc, String> {
     let conn = db_conn(&app)?;
     conn.query_row(
@@ -879,7 +879,7 @@ pub fn requirements_get(app: AppHandle, run_id: String) -> Result<RequirementsDo
     .map_err(|_| format!("no requirements recorded for run {}", run_id))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn requirements_upsert(
     app: AppHandle,
     run_id: String,
@@ -904,7 +904,7 @@ pub fn requirements_upsert(
 
 /// Record the human architecture sign-off (used by the RequirementsPanel and
 /// the orchestration loop before leaving ARCHITECTURE).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn requirements_signoff(app: AppHandle, run_id: String) -> Result<(), String> {
     let conn = db_conn(&app)?;
     assert_run_open(&conn, &run_id)?;
@@ -931,7 +931,7 @@ pub struct AdrRow {
     pub created_at: String,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn adr_create(
     app: AppHandle,
     run_id: String,
@@ -958,7 +958,7 @@ pub fn adr_create(
     Ok(id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn adr_list(app: AppHandle, run_id: String) -> Result<Vec<AdrRow>, String> {
     let conn = db_conn(&app)?;
     let mut stmt = conn

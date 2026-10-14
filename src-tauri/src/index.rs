@@ -220,7 +220,7 @@ fn collect_entries(root: &str) -> Result<(Vec<CollectedEntry>, i64, i64), String
 
 /// Rebuild the index for a project root. Runs the walk on a blocking thread;
 /// the command itself is async so the UI stays responsive.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn index_rebuild(
     app: tauri::AppHandle,
     project_root: String,
@@ -313,7 +313,7 @@ pub struct IndexHit {
 
 /// Ranked search: exact filename > symbol > text content. `project_root` is
 /// optional; when omitted, all indexed projects are searched.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn index_search(
     app: tauri::AppHandle,
     query: String,
@@ -398,7 +398,7 @@ struct IndexChangeEvent {
 /// Start watching a project root. Emits `index://changed` {path, kind}
 /// whenever a file is created/modified/removed by an EXTERNAL process.
 /// Debounced: at most one event per path per 500ms.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn index_watch_start(
     app: tauri::AppHandle,
     project_root: String,
@@ -469,7 +469,7 @@ pub fn index_watch_start(
 }
 
 /// Stop watching a project root. Dropping the watcher ends notifications.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn index_watch_stop(project_root: String) -> Result<(), String> {
     watchers()
         .lock()

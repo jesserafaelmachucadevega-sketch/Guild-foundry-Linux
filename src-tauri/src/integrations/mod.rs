@@ -206,7 +206,7 @@ async fn get(url: &str, headers: &[(&str, &str)]) -> Result<(u16, String), Strin
 
 /// Live handshake for one service. `api_key`: explicit key to test (unsaved
 /// keys can be probed without storing); falls back to the keyring copy.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn integration_handshake(
     service: String,
     api_key: Option<String>,

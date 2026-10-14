@@ -56,7 +56,7 @@ fn rand_suffix() -> String {
     format!("{:x}", x & 0xffff)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn suggestions_list(
     app: tauri::AppHandle,
     conversation_id: String,
@@ -89,7 +89,7 @@ pub fn suggestions_list(
 }
 
 /// Recent labels (any status) so generation can avoid repeats. Newest first.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn suggestions_recent_labels(
     app: tauri::AppHandle,
     conversation_id: String,
@@ -112,7 +112,7 @@ pub fn suggestions_recent_labels(
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn suggestions_add(
     app: tauri::AppHandle,
     conversation_id: String,

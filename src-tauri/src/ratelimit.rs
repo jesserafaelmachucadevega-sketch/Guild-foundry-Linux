@@ -184,7 +184,7 @@ pub async fn acquire(
 }
 
 /// Current usage snapshot for UI/diagnostics: (used_today, per_day).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ratelimit_status(
     app: tauri::AppHandle,
     provider_id: String,
@@ -198,7 +198,7 @@ pub fn ratelimit_status(
 /// when the model is a free-tier model subject to quotas, so the model itself
 /// knows its budget and spends turns wisely. Paid and local models get `None`
 /// — no notice, no constraint.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn ratelimit_quota_notice(
     app: tauri::AppHandle,
     provider_id: String,

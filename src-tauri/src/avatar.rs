@@ -40,7 +40,7 @@ fn save_custom(app: &tauri::AppHandle, bytes: &[u8]) -> Result<(), String> {
 }
 
 /// Upload a custom avatar from the frontend (base64 data URL or raw base64).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn avatar_upload_image(app: tauri::AppHandle, data_base64: String) -> Result<(), String> {
     use base64::Engine;
     let raw = data_base64.trim();
@@ -72,7 +72,7 @@ pub fn set_avatar_from_path(
 }
 
 /// Tauri command wrapper.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn avatar_set_image(app: tauri::AppHandle, source_path: String) -> Result<(), String> {
     set_avatar_from_path(&app, &source_path)?;
     Ok(())

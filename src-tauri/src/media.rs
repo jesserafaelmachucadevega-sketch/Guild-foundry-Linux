@@ -312,7 +312,7 @@ pub fn speak(
 
 /// Frontend mic flow: base64 audio from MediaRecorder → temp file → transcribe.
 /// Returns the transcript text directly (not a tool call).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn media_transcribe_mic(
     app: tauri::AppHandle,
     audio_base64: String,

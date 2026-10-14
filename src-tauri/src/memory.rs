@@ -127,7 +127,7 @@ fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<MemoryEntry> {
 /// Upsert one memory cell under the full composite key. Optional `scope_id`
 /// pins the entry to a concrete conversation/agent/project when the scope
 /// is conversation/agent/project; it is part of the lookup, not the key.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn memory_put(
     app: tauri::AppHandle,
     scope: String,
@@ -182,7 +182,7 @@ pub fn memory_put(
 
 /// Read one memory cell. Every lookup binds all five composite-key parts.
 /// A successful read bumps access_count/last_accessed_at (feeds importance).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn memory_get(
     app: tauri::AppHandle,
     scope: String,
@@ -228,7 +228,7 @@ pub struct MemoryHit {
 /// LIKE-based keyword search within one composite isolation domain.
 /// Honest doc: this is keyword ranking (token hits + importance), NOT
 /// semantic/embedding search. All five key parts are mandatory filters.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn memory_search(
     app: tauri::AppHandle,
     query: String,

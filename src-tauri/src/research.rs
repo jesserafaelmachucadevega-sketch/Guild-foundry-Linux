@@ -185,7 +185,7 @@ fn persist_done(app: &tauri::AppHandle, s: &ResearchStatus) {
 }
 
 /// Live status of a research job (in-memory; persisted copy in research_jobs).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn research_status(app: tauri::AppHandle, job_id: String) -> Result<ResearchStatus, String> {
     if let Some(s) = get_status(&job_id) {
         return Ok(s);

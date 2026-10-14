@@ -83,7 +83,7 @@ pub fn revoke_grant(session_id: &str) {
 
 /// Grant a session for a headless scheduled run. Only succeeds if the task
 /// exists and the user enabled auto-approve for it.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn scheduler_grant_session(app: AppHandle, session_id: String, task_id: String) -> Result<(), String> {
     let auto: Option<i64> = open(&app)?
         .query_row(
@@ -294,7 +294,7 @@ pub fn scheduler_run_now(app: AppHandle, id: String) -> Result<(), String> {
 
 /// Called by the frontend after a headless run finishes. Also revokes any
 /// session grant so the auto-approve cannot outlive the run.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn scheduler_complete(
     app: AppHandle,
     id: String,

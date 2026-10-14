@@ -858,7 +858,7 @@ fn extract_bytes_for_upload(name: &str, bytes: &[u8]) -> Result<Value, String> {
 
 /// Extract readable text from an uploaded file (base64 payload) so the model
 /// can actually read it. Images return an empty text plus a note to use OCR.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn document_extract_upload(name: String, data_b64: String) -> Result<Value, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_b64)
@@ -870,7 +870,7 @@ pub async fn document_extract_upload(name: String, data_b64: String) -> Result<V
 
 /// Persist an uploaded file (images/documents the user attached) under
 /// app-data/media/uploads so it survives restarts and can be rendered.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn upload_save_b64(
     app: tauri::AppHandle,
     name: String,
