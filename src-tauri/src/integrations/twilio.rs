@@ -6,7 +6,7 @@
 // `gfa-twilio:auth`. Every send/call costs real money and is approval-gated
 // upstream — the tool descriptions say so.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -72,13 +72,28 @@ fn twilio_error(code: u16, body: &str) -> String {
     }
 }
 
+/// One pooled client for every Twilio call: a fresh client per call rebuilt
+/// the whole connection pool and TLS state each time, and `Client::new()`
+/// has no timeout at all — a silent network black hole would hang the call
+/// forever. The static client bounds both connect and total request time.
+fn http() -> &'static reqwest::Client {
+    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    HTTP.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build twilio HTTP client")
+    })
+}
+
 async fn post_form(
     sid: &str,
     token: &str,
     url: &str,
     form: Vec<(String, String)>,
 ) -> Result<(u16, String), String> {
-    let resp = reqwest::Client::new()
+    let resp = http()
         .post(url)
         .basic_auth(sid, Some(token.to_string()))
         .form(&form)
@@ -91,7 +106,7 @@ async fn post_form(
 }
 
 async fn get_json(sid: &str, token: &str, url: &str) -> Result<(u16, String), String> {
-    let resp = reqwest::Client::new()
+    let resp = http()
         .get(url)
         .basic_auth(sid, Some(token.to_string()))
         .send()

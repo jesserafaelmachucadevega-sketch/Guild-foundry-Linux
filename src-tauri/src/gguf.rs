@@ -11,7 +11,7 @@
 
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use llama_cpp_2::context::params::LlamaContextParams;
@@ -43,7 +43,7 @@ fn backend() -> Result<&'static LlamaBackend, String> {
 
 struct Loaded {
     path: PathBuf,
-    model: LlamaModel,
+    model: Arc<LlamaModel>,
 }
 
 fn model_slot() -> &'static Mutex<Option<Loaded>> {
@@ -291,7 +291,7 @@ fn ensure_loaded(app: &tauri::AppHandle, path: &str, guard: &mut Option<Loaded>)
     })?;
     *guard = Some(Loaded {
         path: PathBuf::from(path),
-        model,
+        model: Arc::new(model),
     });
     Ok(())
 }
@@ -306,10 +306,15 @@ fn generate_core<F: FnMut(&str)>(
     p: &GenParams,
     mut on_delta: F,
 ) -> Result<(String, u64, u64), String> {
-    let mut slot = model_slot().lock().map_err(|e| e.to_string())?;
-    ensure_loaded(app, model_path, &mut slot)?;
-    let loaded = slot.as_ref().ok_or("model not loaded")?;
-    let model = &loaded.model;
+    // Hold the slot lock only for ensure/load; generation runs after the
+    // guard drops, so status queries and model loads don't wait behind a
+    // full generation under the mutex.
+    let model = {
+        let mut slot = model_slot().lock().map_err(|e| e.to_string())?;
+        ensure_loaded(app, model_path, &mut slot)?;
+        slot.as_ref().ok_or("model not loaded")?.model.clone()
+    };
+    let model: &LlamaModel = &model;
     let backend = backend()?;
 
     let prompt = build_prompt(model, messages);
@@ -325,6 +330,12 @@ fn generate_core<F: FnMut(&str)>(
             n_ctx
         ));
     }
+    // Cap generation to the KV budget: prompt + output must both fit inside
+    // n_ctx or llama_decode fails mid-stream — after the user has already
+    // seen partial text. Saturating math keeps this panic-proof.
+    let max_new = (p.max_tokens as usize)
+        .min((n_ctx as usize).saturating_sub(tokens.len() + 16))
+        .max(1) as u64;
 
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(n_ctx))
@@ -375,7 +386,7 @@ fn generate_core<F: FnMut(&str)>(
     let mut produced: u64 = 0;
     let mut cut: Option<usize> = None;
 
-    while produced < p.max_tokens as u64 {
+    while produced < max_new {
         if !stream_id.is_empty() && crate::providers::is_stream_cancelled(stream_id) {
             break;
         }
@@ -499,10 +510,9 @@ pub fn stream_generate(
             emit(app, stream_id, None, true, None, pt, ct, started.elapsed().as_millis() as u64);
             Ok(())
         }
-        Err(e) => {
-            emit(app, stream_id, None, true, Some(&e), 0, 0, started.elapsed().as_millis() as u64);
-            Err(e)
-        }
+        // The caller (provider_chat_stream) emits the single error event.
+        // Emitting here too delivered every failure twice to the frontend.
+        Err(e) => Err(e),
     }
 }
 

@@ -762,7 +762,12 @@ fn tool_registry() -> Vec<ToolDef> {
 fn open_conn(app: &tauri::AppHandle) -> Result<Connection, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let db_path = dir.join("guild-foundry-ai.db");
-    Connection::open(&db_path).map_err(|e| e.to_string())
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    // Several modules write this same SQLite file (harness saves, MCP
+    // registry, scheduler). Without a busy timeout a contended INSERT fails
+    // and, since audit logging is best-effort, the row is silently lost.
+    let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
+    Ok(conn)
 }
 
 fn ensure_tool_executions_table(conn: &Connection) {
@@ -1290,7 +1295,27 @@ fn handshake_prompt(manifest: &CapabilityManifest) -> String {
 /// Returns a `ToolResult` (never throws for gate conditions) — the frontend
 /// tool loop always feeds the result back into the model.
 #[tauri::command(rename_all = "snake_case")]
-pub fn tool_execute(
+pub async fn tool_execute(
+    app: tauri::AppHandle,
+    tool: String,
+    args_json: String,
+    agent_id: String,
+    session_id: String,
+) -> Result<ToolResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        tool_execute_blocking(app, tool, args_json, agent_id, session_id)
+    })
+    .await
+    .map_err(|e| format!("tool executor task failed: {}", e))?
+}
+
+/// Blocking body of `tool_execute`. Dispatched on the blocking pool: several
+/// dispatcher arms (git, MCP, cloud, media) are synchronous and internally
+/// `block_on` network work — running that on the command's own thread would
+/// freeze the UI for the duration. Panic isolation also comes free here: a
+/// panicking tool becomes a JoinError mapped to Err instead of tearing down
+/// the IPC call.
+fn tool_execute_blocking(
     app: tauri::AppHandle,
     tool: String,
     args_json: String,
@@ -1741,4 +1766,24 @@ pub fn tool_execute(
         );
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod executor_tests {
+    /// The tool executor wraps its blocking body in `spawn_blocking`, and
+    /// several dispatcher arms call `tauri::async_runtime::block_on` inside.
+    /// This pins the invariant that nested `block_on` on a blocking-pool
+    /// thread is legal — tokio panics with "Cannot start a runtime from
+    /// within a runtime" if the blocking pool ever marks the runtime as
+    /// entered, so a future tokio upgrade that changes that would fail here
+    /// instead of freezing tool calls in production.
+    #[test]
+    fn block_on_inside_spawn_blocking_is_safe() {
+        let out = tauri::async_runtime::block_on(async {
+            tauri::async_runtime::spawn_blocking(|| tauri::async_runtime::block_on(async { 42u8 }))
+                .await
+                .expect("spawn_blocking join should not fail")
+        });
+        assert_eq!(out, 42);
+    }
 }

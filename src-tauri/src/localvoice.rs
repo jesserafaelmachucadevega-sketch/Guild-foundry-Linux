@@ -72,9 +72,40 @@ fn transcribe(app: &tauri::AppHandle, samples: &[f32]) -> Result<String, String>
     let tmp = std::env::temp_dir().join(format!("gfa-whisper-{}.pcm", uuid::Uuid::new_v4()));
     std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
 
-    let out = Command::new(&helper).arg(&model).arg(&tmp).output();
+    // Hard ceiling: a wedged or corrupt model must not hang the tool call
+    // forever — and if it did, the temp PCM file would leak with it.
+    let spawn = Command::new(&helper)
+        .arg(&model)
+        .arg(&tmp)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    let mut child = match spawn {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("failed to run whisper-helper: {}", e));
+        }
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+    let out = loop {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(_) => break child.wait_with_output().map_err(|e| e.to_string())?,
+            None => {
+                if std::time::Instant::now() > deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&tmp);
+                    return Err(
+                        "local transcription timed out after 180 s — the model may be corrupt or too large for this machine"
+                            .to_string(),
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+    };
     let _ = std::fs::remove_file(&tmp);
-    let out = out.map_err(|e| format!("failed to run whisper-helper: {}", e))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let snippet: String = err.trim().chars().take(300).collect();

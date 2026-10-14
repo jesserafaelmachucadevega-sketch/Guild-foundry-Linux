@@ -130,6 +130,12 @@ fn with_session<T>(
             acc.imap_host, acc.imap_port, e
         )
     })?;
+    // Bound every socket operation. Without these, one stalled IMAP server
+    // hangs the tool call and pins its blocking-pool thread indefinitely.
+    tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|e| format!("failed to set IMAP read timeout: {}", e))?;
+    tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|e| format!("failed to set IMAP write timeout: {}", e))?;
     let conn = ClientConnection::new(rustls_config().clone(), server_name)
         .map_err(|e| format!("TLS init failed: {}", e))?;
     let stream = StreamOwned::new(conn, tcp);

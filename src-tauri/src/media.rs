@@ -313,7 +313,20 @@ pub fn speak(
 /// Frontend mic flow: base64 audio from MediaRecorder → temp file → transcribe.
 /// Returns the transcript text directly (not a tool call).
 #[tauri::command(rename_all = "snake_case")]
-pub fn media_transcribe_mic(
+pub async fn media_transcribe_mic(
+    app: tauri::AppHandle,
+    audio_base64: String,
+    content_type: String,
+    language: Option<String>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        media_transcribe_mic_blocking(app, audio_base64, content_type, language)
+    })
+    .await
+    .map_err(|e| format!("transcription task failed: {}", e))?
+}
+
+fn media_transcribe_mic_blocking(
     app: tauri::AppHandle,
     audio_base64: String,
     content_type: String,
@@ -346,10 +359,11 @@ pub fn media_transcribe_mic(
         ext
     ));
     std::fs::write(&path, &bytes).map_err(|e| format!("save failed: {}", e))?;
-    let out = transcribe(None, Some(&path.to_string_lossy()), language.as_deref(), None)?;
-    // Best-effort cleanup; the transcript is what matters.
+    // Cleanup must happen on BOTH paths. The previous `?` here leaked one
+    // recording file per failed transcription into app-data/media/mic.
+    let out = transcribe(None, Some(&path.to_string_lossy()), language.as_deref(), None);
     let _ = std::fs::remove_file(&path);
-    out.get("text")
+    out?.get("text")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| "transcription returned no text".to_string())
@@ -357,17 +371,21 @@ pub fn media_transcribe_mic(
 
 /// Frontend "read aloud" flow: text → speech → local path for playback.
 #[tauri::command]
-pub fn media_speak_text(
+pub async fn media_speak_text(
     app: tauri::AppHandle,
     text: String,
     voice: Option<String>,
     language: Option<String>,
 ) -> Result<String, String> {
-    let out = speak(&app, &text, voice.as_deref(), language.as_deref())?;
-    out.get("path")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| "TTS returned no path".to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = speak(&app, &text, voice.as_deref(), language.as_deref())?;
+        out.get("path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| "TTS returned no path".to_string())
+    })
+    .await
+    .map_err(|e| format!("speech task failed: {}", e))?
 }
 
 async fn post_json(

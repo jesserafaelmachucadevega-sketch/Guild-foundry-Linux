@@ -28,6 +28,9 @@ fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let conn =
         Connection::open(dir.join("guild-foundry-ai.db")).map_err(|e| e.to_string())?;
+    // The debounced thread saver races MCP/scheduler writers on this same
+    // SQLite file; wait for the lock instead of failing (and losing) a save.
+    let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     conn.execute_batch(MIGRATION_HARNESS_V4)
         .map_err(|e| e.to_string())?;
     Ok(conn)

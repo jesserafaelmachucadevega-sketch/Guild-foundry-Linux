@@ -863,6 +863,11 @@ pub async fn document_extract_upload(name: String, data_b64: String) -> Result<V
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_b64)
         .map_err(|e| format!("bad base64 payload: {}", e))?;
+    // Defense in depth: the UI caps uploads at 25 MB, but a direct invoke
+    // should not be able to push an unbounded payload through IPC + temp.
+    if bytes.len() > 25 * 1024 * 1024 {
+        return Err("upload too large (max 25 MB per file)".to_string());
+    }
     tauri::async_runtime::spawn_blocking(move || extract_bytes_for_upload(&name, &bytes))
         .await
         .map_err(|e| e.to_string())?

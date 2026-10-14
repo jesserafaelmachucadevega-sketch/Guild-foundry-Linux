@@ -1737,8 +1737,11 @@ async fn run_stream(
         if cancel.load(Ordering::Relaxed) {
             return Err("Stream cancelled [CANCELLED]".to_string());
         }
-        match resp.chunk().await {
-            Ok(Some(bytes)) => {
+        // A stalled stream (no bytes for 120 s) must not pin this task
+        // forever — otherwise even `provider_chat_cancel` cannot interrupt
+        // the pending read. This bounds each read, not total output.
+        match tokio::time::timeout(Duration::from_secs(120), resp.chunk()).await {
+            Ok(Ok(Some(bytes))) => {
                 buf.push_str(&String::from_utf8_lossy(&bytes));
                 while let Some(pos) = buf.find('\n') {
                     let line: String = buf[..pos].trim_end_matches('\r').to_string();
@@ -1786,10 +1789,15 @@ async fn run_stream(
                     break;
                 }
             }
-            Ok(None) => break,
-            Err(e) => {
+            Ok(Ok(None)) => break,
+            Ok(Err(e)) => {
                 let (raw, layman, detail) = net_error(&e);
                 return Err(err_text(&raw, &layman, &detail));
+            }
+            Err(_) => {
+                return Err(
+                    "provider stream stalled: no data for 120 s [STALLED]".to_string()
+                );
             }
         }
     }
