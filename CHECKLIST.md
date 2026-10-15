@@ -149,7 +149,6 @@ Status: implemented + verified at the layer level (typecheck, vite build, IPC 16
 - [x] MCP stdio session warming — children pooled per server, checked out per call, fingerprint-checked against config drift, killed on app exit; covered by two live-process tests
 - [x] Command-thread hygiene — `tool_execute`, media (mic/TTS), memory search/reindex and all heavy workspace file ops run on the blocking pool (no UI freezes on network/disk I/O)
 - [ ] GGUF KV-context reuse — **NOT POSSIBLE in pinned binding** (llama-cpp-2 0.1.159 exposes no `clear_kv_cache`; per-request contexts are allocated and freed correctly, just not reused). Revisit when the binding exposes cache control
-- [ ] Native Google/Outlook calendar OAuth — deferred to LAST (user-set order); needs a Google Cloud OAuth client on the user's side. MCP connectors work meanwhile
-- [x] Feature set round 2 (user-requested): cost dashboard, call transcripts → memory, creditor playbooks, unified inbox triage, LAN mobile companion — ALL IMPLEMENTED
+- [x] Native Google Calendar OAuth — authorization code + PKCE + loopback redirect, refresh token in the OS keychain, tools `calendar.gcal_list/gcal_events/gcal_create`, Connections card. (Outlook: still via MCP connectors — a Microsoft app registration would be the equivalent next step)
 - [ ] Hands-on acceptance run — script in docs/ACCEPTANCE-RUN.md; requires the user (only remaining verification layer)
 
