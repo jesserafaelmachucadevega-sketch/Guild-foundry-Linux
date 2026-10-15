@@ -351,11 +351,11 @@ body {
   border-color: #ffffff;
 }
 .gf-bubble-assistant--local {
-  background: var(--gf-bubble-local, #34c759);
-  border-color: var(--gf-bubble-local, #34c759);
+  background: var(--gf-bubble-local, #08a04b);
+  border-color: var(--gf-bubble-local, #08a04b);
 }
 .gf-bubble-assistant--local .gf-bubble-header {
-  background: var(--gf-bubble-local-strong, #2fae4f);
+  background: var(--gf-bubble-local-strong, #079044);
   color: #ffffff;
 }
 
