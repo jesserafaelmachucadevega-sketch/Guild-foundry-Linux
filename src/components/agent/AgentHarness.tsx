@@ -438,6 +438,18 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
      })();
     }, [desktop, reloadProviders, promptKey, conversationId]);
 
+  // Persist the model selection so other surfaces (the LAN mobile companion)
+  // know which provider/model the desktop is using.
+  useEffect(() => {
+    if (!desktop || !providerId) return;
+    void invoke('settings_set', { key: 'agent.active_provider', value: providerId }).catch(() => undefined);
+  }, [desktop, providerId]);
+
+  useEffect(() => {
+    if (!desktop || !modelId) return;
+    void invoke('settings_set', { key: 'agent.active_model', value: modelId }).catch(() => undefined);
+  }, [desktop, modelId]);
+
   // Persist the thread (debounced) to SQLite so it survives restarts AND
   // model swaps. An empty array persists a cleared history.
   useEffect(() => {

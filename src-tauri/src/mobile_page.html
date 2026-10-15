@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Guild Foundry AI — companion</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0e1420; color: #e8eef8; display: flex; flex-direction: column; height: 100dvh;
+  }
+  @media (prefers-color-scheme: light) { body { background: #f4f7fc; color: #16233a; } }
+  header {
+    padding: 10px 14px; border-bottom: 1px solid rgba(125,150,190,.25);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  header strong { font-size: 15px; }
+  header .status { font-size: 12px; opacity: .75; }
+  main { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 86%; padding: 8px 11px; border-radius: 12px; white-space: pre-wrap; word-wrap: break-word; font-size: 14.5px; }
+  .msg.user { align-self: flex-end; background: #ffffff; color: #101828; border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: #2e7de9; color: #ffffff; border-bottom-left-radius: 4px; }
+  @media (prefers-color-scheme: light) { .msg.user { background: #ffffff; color: #101828; border: 1px solid #d7e0ee; } }
+  .msg .meta { display: block; font-size: 11px; opacity: .7; margin-top: 3px; }
+  footer { padding: 10px; border-top: 1px solid rgba(125,150,190,.25); display: flex; gap: 8px; }
+  textarea {
+    flex: 1; resize: none; min-height: 44px; max-height: 120px; padding: 10px;
+    border-radius: 10px; border: 1px solid rgba(125,150,190,.4); background: transparent; color: inherit; font: inherit;
+  }
+  button {
+    padding: 0 16px; border: 0; border-radius: 10px; background: #2e7de9; color: #fff;
+    font-weight: 600; font-size: 15px;
+  }
+  button:disabled { opacity: .55; }
+  .banner { padding: 8px 12px; font-size: 13px; background: #3a2a10; color: #ffd9a0; display: none; }
+  .banner.show { display: block; }
+  .empty { opacity: .6; text-align: center; margin-top: 20vh; font-size: 14px; }
+</style>
+</head>
+<body>
+  <header>
+    <strong>Guild Foundry AI</strong>
+    <span class="status" id="status">connecting…</span>
+  </header>
+  <div class="banner" id="banner"></div>
+  <main id="thread"><div class="empty">Loading thread…</div></main>
+  <footer>
+    <textarea id="input" rows="1" placeholder="Message your assistant…" enterkeyhint="send"></textarea>
+    <button id="send">Send</button>
+  </footer>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('k') || '';
+  const api = (path) => `${path}?k=${encodeURIComponent(token)}`;
+  const threadEl = document.getElementById('thread');
+  const inputEl = document.getElementById('input');
+  const sendEl = document.getElementById('send');
+  const statusEl = document.getElementById('status');
+  const bannerEl = document.getElementById('banner');
+  let sending = false;
+  let lastCount = -1;
+
+  function showBanner(text) {
+    bannerEl.textContent = text;
+    bannerEl.classList.add('show');
+  }
+  function clearBanner() { bannerEl.classList.remove('show'); }
+
+  function render(messages) {
+    if (!messages.length) {
+      threadEl.innerHTML = '<div class="empty">No messages yet on this thread — say hello.</div>';
+      return;
+    }
+    threadEl.innerHTML = '';
+    for (const m of messages) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (m.role === 'user' ? 'user' : 'assistant');
+      const body = document.createElement('span');
+      body.textContent = m.text || '';
+      div.appendChild(body);
+      if (m.role === 'assistant' && m.model) {
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = m.model;
+        div.appendChild(meta);
+      }
+      threadEl.appendChild(div);
+    }
+    threadEl.scrollTop = threadEl.scrollHeight;
+  }
+
+  async function refresh(force) {
+    try {
+      const resp = await fetch(api('/api/thread'), { cache: 'no-store' });
+      if (resp.status === 401) { showBanner('This link is missing its token or it is wrong. Re-open the link from the app.'); return; }
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      clearBanner();
+      statusEl.textContent = 'connected · ' + data.messages.length + ' messages';
+      if (force || data.messages.length !== lastCount) {
+        lastCount = data.messages.length;
+        render(data.messages);
+      }
+    } catch (e) {
+      statusEl.textContent = 'offline';
+      showBanner('Cannot reach the desktop app: ' + e.message);
+    }
+  }
+
+  async function send() {
+    if (sending) return;
+    const text = inputEl.value.trim();
+    if (!text) return;
+    sending = true;
+    sendEl.disabled = true;
+    statusEl.textContent = 'thinking…';
+    try {
+      const resp = await fetch(api('/api/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        showBanner(data && typeof data === 'string' ? data : (data.reply ? '' : 'Request failed (HTTP ' + resp.status + ')'));
+      } else if (data.warning) {
+        showBanner(data.warning);
+      } else {
+        clearBanner();
+      }
+      inputEl.value = '';
+      await refresh(true);
+    } catch (e) {
+      showBanner('Send failed: ' + e.message);
+    } finally {
+      sending = false;
+      sendEl.disabled = false;
+      statusEl.textContent = 'connected';
+    }
+  }
+
+  sendEl.addEventListener('click', send);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(120, inputEl.scrollHeight) + 'px';
+  });
+
+  refresh(true);
+  setInterval(() => { if (!sending) refresh(false); }, 4000);
+})();
+</script>
+</body>
+</html>

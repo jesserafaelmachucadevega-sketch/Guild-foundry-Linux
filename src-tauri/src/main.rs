@@ -26,6 +26,7 @@ mod localvoice;
 mod mcp;
 mod media;
 mod memory;
+mod mobile;
 mod os_info;
 mod playbooks;
 mod providers;
@@ -303,6 +304,10 @@ fn main() {
             cost::cost_usage_clear,
             // Unified inbox triage
             inbox::inbox_fetch,
+            // LAN mobile companion
+            mobile::mobile_start,
+            mobile::mobile_stop,
+            mobile::mobile_status,
             index::index_rebuild,
             index::index_search,
             index::index_watch_start,
@@ -348,9 +353,11 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("failed to build Guild Foundry AI")
         .run(|_app_handle, event| {
-            // Pooled stdio MCP children must not outlive the app.
+            // Pooled stdio MCP children and the LAN server must not outlive
+            // the app.
             if let tauri::RunEvent::Exit = event {
                 mcp::stdio_shutdown();
+                mobile::shutdown();
             }
         });
 }

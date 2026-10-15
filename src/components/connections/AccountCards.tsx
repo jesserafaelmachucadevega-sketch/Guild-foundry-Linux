@@ -726,6 +726,133 @@ function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.
   );
 }
 
+interface MobileStatus {
+  running: boolean;
+  url?: string | null;
+  token?: string | null;
+  port: number;
+  lan_ip?: string | null;
+}
+
+function MobileCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [status, setStatus] = useState<MobileStatus | null>(null);
+  const [port, setPort] = useState('8787');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async (): Promise<void> => {
+    try {
+      const st = await invoke<MobileStatus>('mobile_status');
+      setStatus(st);
+      if (st.port) setPort(String(st.port));
+    } catch {
+      setStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const start = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const p = Number.parseInt(port, 10);
+      if (Number.isNaN(p)) {
+        onToast('Port must be a number');
+        return;
+      }
+      const st = await invoke<{ url: string }>('mobile_start', { port: p });
+      await refresh();
+      onToast(`Mobile companion running: ${st.url}`);
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await invoke('mobile_stop');
+      await refresh();
+      onToast('Mobile companion stopped');
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (): Promise<void> => {
+    if (!status?.url) return;
+    try {
+      await navigator.clipboard.writeText(status.url);
+      onToast('Link copied — open it on your phone (same Wi-Fi)');
+    } catch (e) {
+      onToast(`${errText(e)} — select the link field and copy it manually`);
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Mobile companion (LAN)</strong>
+        {status?.running ? (
+          <span className="conn-badge conn-badge-ok">Running</span>
+        ) : (
+          <span className="conn-badge">Stopped</span>
+        )}
+      </div>
+      <p className="conn-tagline">
+        Your phone talks straight to this machine over Wi-Fi — no cloud, no relay. It chats on the same
+        thread as the Agent tab, so the conversation follows you between desktop and phone.
+      </p>
+      {status?.running && status.url ? (
+        <>
+          <label className="gf-label" style={labelStyle}>
+            Open on your phone
+            <input
+              className="gf-input"
+              readOnly
+              value={status.url}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </label>
+          <div className="gf-row" style={{ marginTop: 8 }}>
+            <button className="gf-btn gf-btn-sm" onClick={() => void copy()} disabled={busy}>
+              Copy link
+            </button>
+            <button className="gf-btn gf-btn-sm" onClick={() => void stop()} disabled={busy}>
+              Stop
+            </button>
+          </div>
+          <p className="conn-note">
+            Anyone on your Wi-Fi who has this link can talk to your assistant — treat it like a password.
+            A fresh token is generated every time you start the companion.
+          </p>
+        </>
+      ) : (
+        <>
+          <label className="gf-label" style={labelStyle}>
+            Port
+            <input className="gf-input" value={port} onChange={(e) => setPort(e.target.value)} placeholder="8787" />
+          </label>
+          <div className="gf-row" style={{ marginTop: 8 }}>
+            <button className="gf-btn gf-btn-sm" onClick={() => void start()} disabled={busy}>
+              Start
+            </button>
+          </div>
+          <p className="conn-note">
+            Pick a provider and model in the Agent tab first — the phone uses that same selection.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AccountCards({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   return (
     <>
@@ -735,6 +862,7 @@ export function AccountCards({ onToast }: { onToast: (msg: string) => void }): R
         <CalendarCard onToast={onToast} />
         <PhoneCard onToast={onToast} />
         <LocalVoiceCard onToast={onToast} />
+        <MobileCard onToast={onToast} />
       </div>
     </>
   );

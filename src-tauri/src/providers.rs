@@ -173,6 +173,16 @@ pub struct ChatMsg {
     content: String,
 }
 
+impl ChatMsg {
+    /// Constructor for non-command callers (e.g. the LAN mobile companion).
+    pub fn new(role: &str, content: &str) -> Self {
+        Self {
+            role: role.to_string(),
+            content: content.to_string(),
+        }
+    }
+}
+
 /// camelCase: these keys come from the TypeScript ChatParams contract.
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
