@@ -72,6 +72,25 @@ pub fn secret_set(app: tauri::AppHandle, key: String, value: String) -> Result<(
     }
     // Value goes only to the keyring entry; never into SQLite or logs.
     keyring_entry(&k)?.set_password(&value).map_err(|e| e.to_string())?;
+    // Verify the write actually landed. The Secret Service can report success
+    // while the collection never retains the item (observed on this machine:
+    // the index said "saved", the store said "No matching entry", and the
+    // user only found out at Connect time). Fail loudly instead.
+    match keyring_entry(&k)?.get_password() {
+        Ok(read_back) if read_back == value => {}
+        Ok(_) => {
+            return Err(
+                "the keyring stored a different value than what was sent — the save did NOT stick; try again"
+                    .to_string(),
+            )
+        }
+        Err(e) => {
+            return Err(format!(
+                "the keyring accepted the key but could not read it back ({}); the save did NOT stick — try again, and if it keeps happening check that gnome-keyring is running and unlocked",
+                e
+            ))
+        }
+    }
     let conn =
         rusqlite::Connection::open(db_path(&app)?).map_err(|e| e.to_string())?;
     ensure_index(&conn).map_err(|e| e.to_string())?;

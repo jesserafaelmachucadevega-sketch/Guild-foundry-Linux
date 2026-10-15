@@ -288,10 +288,13 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
         models_path: form.models_path.trim() || '/models',
         api_key: form.api_key || undefined,
       });
+      const keySent = Boolean(form.api_key);
       onToast(
-        form.id || editingSavedId
-          ? `Saved ${saved.name}${form.api_key ? ' (key updated in keyring)' : ' (key kept in keyring — just hit Connect)'}`
-          : `Added ${saved.name} — saved securely. Just hit Connect next time.`,
+        keySent && !saved.has_key
+          ? `Saved ${saved.name} — but the system keyring did not retain the key. Re-enter it and Save again (check that gnome-keyring is running if this persists).`
+          : form.id || editingSavedId
+            ? `Saved ${saved.name}${keySent ? ' (key saved and verified in keyring)' : ' (key kept in keyring — just hit Connect)'}`
+            : `Added ${saved.name} — saved securely. Just hit Connect next time.`,
       );
       setSelected(saved.id);
       setForm(formFromSaved(saved));
