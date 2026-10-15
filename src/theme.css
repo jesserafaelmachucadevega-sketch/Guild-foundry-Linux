@@ -237,9 +237,9 @@ body {
 .gf-bubble {
   border: 1px solid var(--gf-border);
   background: var(--gf-panel);
-  /* Bubbles never span the window — capped at three quarters for every
-     speaker (you, cloud models, local models, conference debaters). */
-  max-width: 75%;
+  /* Bubbles never span the window — capped at half for every speaker
+     (you, cloud models, local models, conference debaters). */
+  max-width: 50%;
   border-radius: 18px;
 }
 
@@ -250,6 +250,7 @@ body {
   padding: 6px 10px;
   border-bottom: 1px solid var(--gf-border);
   background: var(--gf-panel-2);
+  border-radius: 18px 18px 0 0;
 }
 
 .gf-bubble-role {
@@ -304,7 +305,7 @@ body {
    blue when it runs in the cloud and green when it runs locally. */
 .gf-bubble-user {
   margin-left: auto;
-  max-width: 75%;
+  max-width: 50%;
   background: #ffffff;
   color: #0d1b33;
   border-radius: 18px 6px 18px 18px;
@@ -327,7 +328,7 @@ body {
 
 .gf-bubble-assistant {
   margin-right: auto;
-  max-width: 75%;
+  max-width: 50%;
   background: var(--gf-bubble-cloud, #2e7de9);
   color: #ffffff;
   border-radius: 6px 18px 18px 18px;
