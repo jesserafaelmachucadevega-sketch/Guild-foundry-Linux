@@ -350,13 +350,31 @@ body {
   color: #ffffff;
   border-color: #ffffff;
 }
+/* Local model: sage green (#8FBC8F) — a light bubble, so text and icons
+   switch to dark to stay readable. */
 .gf-bubble-assistant--local {
-  background: var(--gf-bubble-local, #08a04b);
-  border-color: var(--gf-bubble-local, #08a04b);
+  background: var(--gf-bubble-local, #8fbc8f);
+  border-color: var(--gf-bubble-local, #8fbc8f);
+  color: #10243a;
 }
 .gf-bubble-assistant--local .gf-bubble-header {
-  background: var(--gf-bubble-local-strong, #079044);
-  color: #ffffff;
+  background: var(--gf-bubble-local-strong, #7ea87e);
+  color: #10243a;
+}
+.gf-bubble-assistant--local .gf-bubble-body {
+  color: #10243a;
+}
+.gf-bubble-assistant--local .gf-bubble-body pre {
+  background: rgba(16, 36, 58, 0.12);
+  color: #10243a;
+}
+.gf-bubble-assistant--local .gf-icon-btn {
+  color: #23405f;
+  border-color: rgba(16, 36, 58, 0.35);
+}
+.gf-bubble-assistant--local .gf-icon-btn:hover {
+  color: #10243a;
+  border-color: #10243a;
 }
 
 .gf-bubble-actions-row {
