@@ -545,6 +545,51 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "external_apis".into(),
             ready: true,
         },
+        // Google Calendar (OAuth) tools
+        ToolDef {
+            name: "calendar.gcal_list".into(),
+            description: "List the user's Google Calendars (id, name, timezone). Requires the Google Calendar OAuth connection in Connections."
+                .into(),
+            schema: schema(serde_json::json!({}), &[]),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "calendar.gcal_events".into(),
+            description: "List upcoming Google Calendar events for the next N days (default 7). Returns summaries, times, and links."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "calendar_id": { "type": "string", "description": "Calendar id from calendar.gcal_list (default: the primary calendar)." },
+                    "days": { "type": "number", "description": "How many days ahead to look (1-365, default 7)." },
+                    "max": { "type": "number", "description": "Maximum events (1-250, default 50)." }
+                }),
+                &[],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "calendar.gcal_create".into(),
+            description: "Create a Google Calendar event. Times are RFC3339 with an offset (e.g. 2026-10-16T09:00:00-07:00) or YYYY-MM-DD for an all-day event. Always confirm details with the user before creating."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "summary": { "type": "string", "description": "Event title." },
+                    "start": { "type": "string", "description": "Start (RFC3339 with offset, or YYYY-MM-DD for all-day)." },
+                    "end": { "type": "string", "description": "End (same format as start)." },
+                    "description": { "type": "string", "description": "Optional details." },
+                    "location": { "type": "string", "description": "Optional location." },
+                    "calendar_id": { "type": "string", "description": "Target calendar id (default: primary)." }
+                }),
+                &["summary", "start", "end"],
+            ),
+            risk: RiskLevel::Moderate,
+            domain: "external_apis".into(),
+            ready: true,
+        },
         // Document processing tools
         ToolDef {
             name: "document.convert".into(),
@@ -1250,6 +1295,15 @@ fn setup_hint(app: &tauri::AppHandle, tool: &str) -> Option<&'static str> {
     if tool.starts_with("email.") && !setting_present(app, "email.account") {
         return Some("connect an email account under System & Settings → Tools & Registry → Connections");
     }
+    if tool.starts_with("calendar.gcal") {
+        if !setting_present(app, "calendar.google") {
+            return Some("add your Google OAuth client under Connections → Google Calendar");
+        }
+        if !crate::integrations::gcal::connected() {
+            return Some("press Connect on the Google Calendar card under Connections");
+        }
+        return None;
+    }
     if tool.starts_with("calendar.") && !setting_present(app, "calendar.account") {
         return Some("connect a calendar account under Connections");
     }
@@ -1786,6 +1840,38 @@ fn tool_execute_blocking(
         "calendar.delete_event" => {
             let event_id = arg_str(&args, "event_id")?;
             crate::integrations::calendar::delete_event(&app, &event_id)
+        }
+        // Google Calendar (OAuth)
+        "calendar.gcal_list" => {
+            tauri::async_runtime::block_on(crate::integrations::gcal::list_calendars(&app))
+        }
+        "calendar.gcal_events" => {
+            let calendar_id = args.get("calendar_id").and_then(|v| v.as_str());
+            let days = args.get("days").and_then(|v| v.as_u64()).map(|d| d as u32);
+            let max = args.get("max").and_then(|v| v.as_u64()).map(|m| m as u32);
+            tauri::async_runtime::block_on(crate::integrations::gcal::list_events(
+                &app,
+                calendar_id,
+                days,
+                max,
+            ))
+        }
+        "calendar.gcal_create" => {
+            let summary = arg_str(&args, "summary")?;
+            let start = arg_str(&args, "start")?;
+            let end = arg_str(&args, "end")?;
+            let description = args.get("description").and_then(|v| v.as_str());
+            let location = args.get("location").and_then(|v| v.as_str());
+            let calendar_id = args.get("calendar_id").and_then(|v| v.as_str());
+            tauri::async_runtime::block_on(crate::integrations::gcal::create_event(
+                &app,
+                calendar_id,
+                &summary,
+                &start,
+                &end,
+                description,
+                location,
+            ))
         }
         // Document tools
         "document.convert" => {

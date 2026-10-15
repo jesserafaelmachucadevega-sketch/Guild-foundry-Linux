@@ -726,6 +726,188 @@ function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.
   );
 }
 
+interface GcalStatus {
+  configured: boolean;
+  connected: boolean;
+  phase: 'idle' | 'waiting' | 'connected' | 'failed';
+  error: string | null;
+  calendars: number;
+}
+
+function GcalCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
+  const [clientId, setClientId] = useState('');
+  const [secret, setSecret] = useState('');
+  const [hasSecret, setHasSecret] = useState(false);
+  const [status, setStatus] = useState<GcalStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [polling, setPolling] = useState(false);
+
+  const refresh = async (): Promise<void> => {
+    try {
+      const st = await invoke<GcalStatus>('gcal_status');
+      setStatus(st);
+      const keys = await invoke<string[]>('secret_list_keys');
+      setHasSecret(keys.includes('gfa-gcal:client-secret'));
+    } catch {
+      setStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    void invoke<Record<string, unknown> | null>('settings_get', { key: 'calendar.google' })
+      .then((v) => {
+        if (v && typeof v.client_id === 'string') setClientId(v.client_id);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!polling) return;
+    const t = window.setInterval(() => {
+      void (async () => {
+        const st = await invoke<GcalStatus>('gcal_status').catch(() => null);
+        if (!st) return;
+        setStatus(st);
+        if (st.phase === 'connected') {
+          setPolling(false);
+          onToast(`Google Calendar connected — ${st.calendars} calendar(s) visible`);
+        } else if (st.phase === 'failed') {
+          setPolling(false);
+          onToast(`Google Calendar: ${st.error ?? 'connection failed'}`);
+        }
+      })();
+    }, 1500);
+    return () => window.clearInterval(t);
+  }, [polling, onToast]);
+
+  const save = async (): Promise<void> => {
+    if (!clientId.trim() || (!secret.trim() && !hasSecret)) {
+      onToast('Client ID and client secret are both required');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('gcal_save_client', {
+        client_id: clientId.trim(),
+        client_secret: secret.trim(),
+      });
+      setSecret('');
+      onToast('Google OAuth client saved — press Connect to sign in');
+      await refresh();
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connect = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await invoke('gcal_connect');
+      setPolling(true);
+      onToast('Browser opened — approve access, then come back here');
+      await refresh();
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await invoke('gcal_disconnect');
+      onToast('Google Calendar disconnected');
+      await refresh();
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-card-head">
+        <strong>Google Calendar (OAuth)</strong>
+        {status?.connected ? (
+          <span className="conn-badge conn-badge-ok">Connected</span>
+        ) : status?.phase === 'waiting' ? (
+          <span className="conn-badge">Waiting for browser…</span>
+        ) : (
+          <span className="conn-badge">Not connected</span>
+        )}
+      </div>
+      <p className="conn-tagline">
+        Native Google Calendar access — the agent reads your calendars and creates events straight
+        against Google's API with your own OAuth client. No third-party server in between.
+      </p>
+      <label className="gf-label" style={labelStyle}>
+        OAuth client ID
+        <input
+          className="gf-input"
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          placeholder="…apps.googleusercontent.com"
+        />
+      </label>
+      <label className="gf-label" style={labelStyle}>
+        Client secret {hasSecret ? '(saved — type to replace)' : ''}
+        <input
+          className="gf-input"
+          type="password"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          placeholder={hasSecret ? '••••••••' : 'GOCSPX-…'}
+        />
+      </label>
+      <div className="gf-row" style={{ marginTop: 8 }}>
+        <button className="gf-btn gf-btn-sm" onClick={() => void save()} disabled={busy}>
+          Save client
+        </button>
+        <button
+          className="gf-btn gf-btn-sm"
+          onClick={() => void connect()}
+          disabled={busy || !status?.configured}
+          title={status?.configured ? 'Open the Google sign-in page' : 'Save the client ID first'}
+        >
+          Connect
+        </button>
+        {status?.connected && (
+          <button className="gf-btn gf-btn-sm" onClick={() => void disconnect()} disabled={busy}>
+            Disconnect
+          </button>
+        )}
+      </div>
+      {status?.connected && (
+        <p className="conn-note">
+          Connected — {status.calendars} calendar(s) visible. The agent tools{' '}
+          <code>calendar.gcal_list</code>, <code>calendar.gcal_events</code> and{' '}
+          <code>calendar.gcal_create</code> are live.
+        </p>
+      )}
+      {status?.phase === 'waiting' && (
+        <p className="conn-note">
+          Waiting for you to approve access in the browser window (up to 5 minutes)…
+        </p>
+      )}
+      {status?.phase === 'failed' && status.error && (
+        <p className="conn-note">{status.error}</p>
+      )}
+      {!status?.connected && status?.phase !== 'waiting' && (
+        <p className="conn-note">
+          Needs a free "Desktop app" OAuth client from Google Cloud with the Calendar API enabled.
+          While the consent screen is in Testing mode, Google expires the connection weekly.
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface MobileStatus {
   running: boolean;
   url?: string | null;
@@ -860,6 +1042,7 @@ export function AccountCards({ onToast }: { onToast: (msg: string) => void }): R
       <div className="conn-grid">
         <EmailCard onToast={onToast} />
         <CalendarCard onToast={onToast} />
+        <GcalCard onToast={onToast} />
         <PhoneCard onToast={onToast} />
         <LocalVoiceCard onToast={onToast} />
         <MobileCard onToast={onToast} />

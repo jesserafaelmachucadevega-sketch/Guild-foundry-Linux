@@ -22,6 +22,7 @@ pub mod calendar;
 pub mod cloud;
 pub mod document;
 pub mod email;
+pub mod gcal;
 pub mod twilio;
 pub mod web;
 
