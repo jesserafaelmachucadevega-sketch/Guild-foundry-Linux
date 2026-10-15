@@ -821,7 +821,17 @@ pub fn ws_list(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_read(
+pub async fn ws_read(
+    app: tauri::AppHandle,
+    project_root: String,
+    rel: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || ws_read_blocking(app, project_root, rel))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn ws_read_blocking(
     app: tauri::AppHandle,
     project_root: String,
     rel: String,
@@ -831,7 +841,20 @@ pub fn ws_read(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_write(
+pub async fn ws_write(
+    app: tauri::AppHandle,
+    project_root: String,
+    rel: String,
+    content: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ws_write_blocking(app, project_root, rel, content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn ws_write_blocking(
     app: tauri::AppHandle,
     project_root: String,
     rel: String,
@@ -937,7 +960,18 @@ pub fn ws_move(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_search(
+pub async fn ws_search(
+    app: tauri::AppHandle,
+    project_root: String,
+    query: String,
+) -> Result<Vec<String>, String> {
+    // Tree-wide grep: the heaviest filesystem walk in the workspace API.
+    tauri::async_runtime::spawn_blocking(move || ws_search_blocking(app, project_root, query))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn ws_search_blocking(
     app: tauri::AppHandle,
     project_root: String,
     query: String,
@@ -947,7 +981,18 @@ pub fn ws_search(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_diff(
+pub async fn ws_diff(
+    app: tauri::AppHandle,
+    project_root: String,
+    rel_a: String,
+    rel_b: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || ws_diff_blocking(app, project_root, rel_a, rel_b))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn ws_diff_blocking(
     app: tauri::AppHandle,
     project_root: String,
     rel_a: String,
@@ -960,7 +1005,20 @@ pub fn ws_diff(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_patch(
+pub async fn ws_patch(
+    app: tauri::AppHandle,
+    project_root: String,
+    rel: String,
+    patch: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ws_patch_blocking(app, project_root, rel, patch)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn ws_patch_blocking(
     app: tauri::AppHandle,
     project_root: String,
     rel: String,
@@ -977,7 +1035,17 @@ pub fn ws_patch(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_snapshot(
+pub async fn ws_snapshot(
+    app: tauri::AppHandle,
+    project_root: String,
+    label: String,
+) -> Result<SnapshotInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || ws_snapshot_blocking(app, project_root, label))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn ws_snapshot_blocking(
     app: tauri::AppHandle,
     project_root: String,
     label: String,
@@ -1121,7 +1189,19 @@ pub fn ws_checkpoint_diff(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn ws_restore(
+pub async fn ws_restore(
+    app: tauri::AppHandle,
+    project_root: String,
+    snapshot_id: String,
+) -> Result<SnapshotInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ws_restore_blocking(app, project_root, snapshot_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn ws_restore_blocking(
     app: tauri::AppHandle,
     project_root: String,
     snapshot_id: String,

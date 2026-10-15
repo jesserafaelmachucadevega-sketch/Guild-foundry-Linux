@@ -233,7 +233,14 @@ pub fn speak(
     if text.len() > 5000 {
         return Err("text too long for one call (max 5000 chars)".to_string());
     }
-    let key = fal_key()?;
+    // Local-first: Kokoro speaks fully offline when it is ready; cloud TTS is
+    // the fallback. `media.tts_prefer_local = false` forces cloud.
+    let prefer_local: bool =
+        crate::settings::settings_get(app.clone(), "media.tts_prefer_local".to_string())
+            .ok()
+            .flatten()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
 
     // Tool arg wins; then settings; then defaults.
     let setting_voice: Option<String> =
@@ -256,9 +263,28 @@ pub fn speak(
         .filter(|s| !s.trim().is_empty())
         .or(setting_lang)
         .unwrap_or_else(|| "en".to_string());
+    let mut local_error: Option<String> = None;
+    if prefer_local {
+        match crate::localvoice::synthesize(app, text, voice.as_deref()) {
+            Ok(v) => return Ok(v),
+            Err(e) => local_error = Some(e),
+        }
+    }
+    let key = match fal_key() {
+        Ok(k) => k,
+        Err(e) => {
+            return Err(match &local_error {
+                Some(le) => format!(
+                    "offline voice is not usable yet ({}) and no cloud voice key is configured ({})",
+                    le, e
+                ),
+                None => e,
+            });
+        }
+    };
     let (endpoint, text_field) = tts_endpoint_for(&language, voice.as_deref());
 
-    tauri::async_runtime::block_on(async {
+    let result = tauri::async_runtime::block_on(async {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
             .build()
@@ -307,7 +333,14 @@ pub fn speak(
             "url": audio_url,
             "chars": text.len(),
         }))
-    })
+    });
+    match result {
+        Ok(v) => Ok(v),
+        Err(e) => Err(match &local_error {
+            Some(le) => format!("{} (offline voice was also unavailable: {})", e, le),
+            None => e,
+        }),
+    }
 }
 
 /// Frontend mic flow: base64 audio from MediaRecorder → temp file → transcribe.

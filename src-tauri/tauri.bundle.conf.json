@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "npm run build:frontend && node scripts/prepare_external_bin.mjs"
+  },
+  "bundle": {
+    "externalBin": ["binaries/whisper-helper"]
+  }
+}

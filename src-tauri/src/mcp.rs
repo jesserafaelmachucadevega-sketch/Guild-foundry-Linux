@@ -2,11 +2,13 @@
 // Phase 7 — MCP Client Gateway + Permission Center (Rust backend).
 //
 // The MCP gateway lives in Rust (master spec section 35): a hand-rolled
-// JSON-RPC 2.0 client over reqwest supporting Streamable HTTP and legacy
-// HTTP+SSE transports, Bearer <redacted> and OAuth 2.1 + PKCE. Discovered tools are
-// normalized into the Phase 1 `tools` registry table.
+// JSON-RPC 2.0 client over reqwest supporting Streamable HTTP, legacy
+// HTTP+SSE transports, and stdio child processes. Bearer tokens and OAuth
+// 2.1 + PKCE. Discovered tools are normalized into the Phase 1 `tools`
+// registry table.
 //
-// RUST NOT COMPILED IN THIS ENVIRONMENT — written with extra care; NOT VERIFIED.
+// stdio children are pooled and reused across calls (warm sessions) — see
+// `stdio_checkout` / `stdio_return` and the tests at the bottom of this file.
 //
 // Schema note: reuses Phase 1 tables `mcp_servers`, `tools`, `permissions`
 // from db.rs (db.rs is never edited). Phase 7-only fields live in two additive
@@ -511,12 +513,116 @@ impl StdioSession {
             }
         }
     }
+
+    fn is_alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
 }
 
 impl Drop for StdioSession {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Warm stdio sessions
+//
+// Spawning an npx/uvx MCP server costs ~1-2 s, so children are pooled per
+// server. A session is checked OUT for the duration of a call and returned on
+// success — never shared between concurrent calls, so two callers can't
+// interleave one child's pipes. A pooled session has already completed a
+// handshake, so warm clients skip re-initializing.
+// ---------------------------------------------------------------------------
+
+const STDIO_IDLE: Duration = Duration::from_secs(600);
+const STDIO_POOL_MAX: usize = 4;
+
+struct PooledStdio {
+    session: StdioSession,
+    fingerprint: String,
+    last_used: Instant,
+    /// Handshake result captured while the child ran; replayed on reuse.
+    info: Option<(Value, String)>,
+}
+
+fn stdio_pool() -> &'static std::sync::Mutex<HashMap<String, Vec<PooledStdio>>> {
+    static POOL: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Vec<PooledStdio>>>> =
+        std::sync::OnceLock::new();
+    POOL.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+fn stdio_fingerprint(command: &str, args: &[String], env: &[(String, String)]) -> String {
+    let mut s = String::from(command);
+    for a in args {
+        s.push('\u{1}');
+        s.push_str(a);
+    }
+    for (k, v) in env {
+        s.push('\u{2}');
+        s.push_str(k);
+        s.push('=');
+        s.push_str(v);
+    }
+    s
+}
+
+/// Take a warm session for this server when the command line still matches,
+/// else spawn. Returns (session, fingerprint, handshake-info) — info is
+/// `Some` for pooled children (already initialized). Also reaps sessions idle
+/// longer than STDIO_IDLE.
+fn stdio_checkout(
+    server_id: &str,
+    command: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<(StdioSession, String, Option<(Value, String)>), String> {
+    let fingerprint = stdio_fingerprint(command, args, env);
+    {
+        let mut pool = stdio_pool().lock().map_err(|e| e.to_string())?;
+        let now = Instant::now();
+        for list in pool.values_mut() {
+            list.retain(|p| now.duration_since(p.last_used) < STDIO_IDLE);
+        }
+        if let Some(list) = pool.get_mut(server_id) {
+            while let Some(mut p) = list.pop() {
+                if p.fingerprint == fingerprint && p.session.is_alive() {
+                    return Ok((p.session, fingerprint, p.info));
+                }
+                // stale config or dead child: dropped here (drop kills it)
+            }
+        }
+    }
+    Ok((StdioSession::spawn(command, args, env)?, fingerprint, None))
+}
+
+/// Give a healthy session back for reuse. The pool is capped so pathological
+/// concurrency cannot accumulate unbounded children.
+fn stdio_return(
+    server_id: &str,
+    fingerprint: String,
+    session: StdioSession,
+    info: Option<(Value, String)>,
+) {
+    if let Ok(mut pool) = stdio_pool().lock() {
+        let list = pool.entry(server_id.to_string()).or_default();
+        if list.len() < STDIO_POOL_MAX {
+            list.push(PooledStdio {
+                session,
+                fingerprint,
+                last_used: Instant::now(),
+                info,
+            });
+        }
+        // over the cap: `session` is dropped here (child killed)
+    }
+}
+
+/// Kill every pooled child. Called on app exit so no process outlives the app.
+pub fn stdio_shutdown() {
+    if let Ok(mut pool) = stdio_pool().lock() {
+        pool.clear();
     }
 }
 
@@ -529,6 +635,10 @@ struct McpClient {
     session_id: Option<String>,
     next_id: u64,
     stdio: Option<StdioSession>,
+    stdio_server_id: Option<String>,
+    stdio_fingerprint: Option<String>,
+    /// Handshake result carried with a pooled session (skips re-initialize).
+    stdio_info: Option<(Value, String)>,
 }
 
 impl McpClient {
@@ -551,12 +661,17 @@ impl McpClient {
             session_id: None,
             next_id: 0,
             stdio: None,
+            stdio_server_id: None,
+            stdio_fingerprint: None,
+            stdio_info: None,
         })
     }
 
     /// stdio transport: the server is a local process speaking JSON-RPC over
-    /// stdin/stdout (one JSON message per line).
+    /// stdin/stdout (one JSON message per line). Reuses a warm pooled child
+    /// when the command line is unchanged — spawning npx/uvx costs seconds.
     fn new_stdio(
+        server_id: &str,
         command: &str,
         args: Vec<String>,
         env: Vec<(String, String)>,
@@ -566,6 +681,7 @@ impl McpClient {
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
+        let (session, fingerprint, info) = stdio_checkout(server_id, command, &args, &env)?;
         Ok(Self {
             http,
             url: String::new(),
@@ -574,8 +690,31 @@ impl McpClient {
             headers,
             session_id: None,
             next_id: 0,
-            stdio: Some(StdioSession::spawn(command, &args, &env)?),
+            stdio: Some(session),
+            stdio_server_id: Some(server_id.to_string()),
+            stdio_fingerprint: Some(fingerprint),
+            stdio_info: info,
         })
+    }
+
+    /// Handshake data already attached to this client (present when the
+    /// session came from the warm pool, or after `handshake()` ran).
+    fn handshake_info(&self) -> Option<(Value, String)> {
+        self.stdio_info.clone()
+    }
+
+    /// Return a healthy child to the pool for the next call; a failed
+    /// interaction drops it (killed) so the next call respawns clean.
+    fn recycle_stdio(&mut self, healthy: bool) {
+        if let (Some(id), Some(fp), Some(session)) = (
+            self.stdio_server_id.take(),
+            self.stdio_fingerprint.take(),
+            self.stdio.take(),
+        ) {
+            if healthy {
+                stdio_return(&id, fp, session, self.stdio_info.take());
+            }
+        }
     }
 
     fn apply_auth(&self, mut req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -789,6 +928,7 @@ impl McpClient {
             .unwrap_or("")
             .to_string();
         let _ = self.notify("notifications/initialized", json!({})).await;
+        self.stdio_info = Some((server_info.clone(), protocol.clone()));
         Ok((server_info, protocol))
     }
 }
@@ -882,6 +1022,7 @@ fn build_client(row: &ServerRow, meta: &ServerMeta) -> Result<McpClient, String>
             return Err("stdio server has no command configured".to_string());
         }
         return McpClient::new_stdio(
+            &row.id,
             meta.command.trim(),
             meta.args.clone(),
             meta.env.clone(),
@@ -1370,7 +1511,10 @@ async fn discover_tools(
 ) -> Result<(Vec<McpToolInfo>, Value, String, u64), String> {
     let started = Instant::now();
     let mut client = build_client(row, meta)?;
-    let (server_info, protocol) = client.handshake().await?;
+    let (server_info, protocol) = match client.handshake_info() {
+        Some(info) => info,
+        None => client.handshake().await?,
+    };
     // Paginate: servers return a `nextCursor` until the listing is complete.
     let mut all: Vec<Value> = Vec::new();
     let mut cursor: Option<String> = None;
@@ -1397,6 +1541,8 @@ async fn discover_tools(
         .iter()
         .map(|t| tool_from_json(&row.id, &row.name, t, true)) // enabled resolved from registry by caller
         .collect();
+    // Everything above succeeded — keep the child warm for the next call.
+    client.recycle_stdio(true);
     Ok((tools, server_info, protocol, latency_ms))
 }
 
@@ -1405,7 +1551,12 @@ pub async fn mcp_connect(app: tauri::AppHandle, server_id: String) -> Result<Mcp
     let (row, meta) = load_server(&app, &server_id)?;
     let started = Instant::now();
     let mut client = build_client(&row, &meta)?;
-    let (_info, protocol) = client.handshake().await?;
+    let protocol = match client.handshake_info() {
+        Some((_info, protocol)) => protocol,
+        None => client.handshake().await?.1,
+    };
+    // Connect is the natural warm-up point: keep the child for tool calls.
+    client.recycle_stdio(true);
     Ok(McpConnectResult {
         ok: true,
         server_name: row.name,
@@ -1420,9 +1571,13 @@ pub async fn mcp_server_test(app: tauri::AppHandle, server_id: String) -> Result
     let started = Instant::now();
     let outcome: Result<(usize, String), String> = async {
         let mut client = build_client(&row, &meta)?;
-        let (_info, protocol) = client.handshake().await?;
+        let protocol = match client.handshake_info() {
+            Some((_info, protocol)) => protocol,
+            None => client.handshake().await?.1,
+        };
         let result = client.call("tools/list", json!({})).await?;
         let count = result.get("tools").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+        client.recycle_stdio(true);
         Ok((count, protocol))
     }
     .await;
@@ -1627,10 +1782,16 @@ pub async fn mcp_call_tool(
     let args: Value = serde_json::from_str(&args_json)
         .map_err(|e| format!("args_json is not valid JSON: {}", e))?;
     let mut client = build_client(&row, &meta)?;
-    let _ = client.handshake().await?;
+    if client.handshake_info().is_none() {
+        let _ = client.handshake().await?;
+    }
     let result = client
         .call("tools/call", json!({ "name": tool_name, "arguments": args }))
         .await;
+    // Session-level health decides pooling: a tool-level error is still a
+    // healthy protocol exchange and keeps the child warm for the next call.
+    let healthy = result.is_ok();
+    client.recycle_stdio(healthy);
     let audit = audit_entry(&server_id, &tool_name, &args_json, "allowed", &format!("domain:mcp={}", level));
     match result {
         Ok(v) => {
@@ -1908,7 +2069,7 @@ pub fn perm_get_effective_level(
 ) -> String {
     let now = now_rfc3339();
     // Check temporal grants first (most specific match wins)
-    let mut stmt = conn
+    let stmt = conn
         .prepare(
             "SELECT level FROM permissions_temporal
              WHERE agent_id IN ('', ?1)
@@ -2175,4 +2336,88 @@ pub async fn perm_list(app: tauri::AppHandle) -> Result<Vec<PermEntry>, String> 
             level: perm_get_effective_level(&conn, "", "*", d),
         })
         .collect())
+}
+
+#[cfg(test)]
+mod stdio_pool_tests {
+    use super::*;
+
+    /// A tiny MCP-ish stdio server: answers every request with its own PID so
+    /// tests can prove a child was reused (same PID) or replaced (new PID).
+    fn fake_server_args() -> Vec<String> {
+        let script = r#"
+import sys, json, os
+for line in sys.stdin:
+    try:
+        m = json.loads(line)
+    except Exception:
+        continue
+    if "id" in m:
+        print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": {"pid": os.getpid(), "method": m.get("method")}}), flush=True)
+"#;
+        vec!["-c".to_string(), script.to_string()]
+    }
+
+    fn ping_pid(session: &mut StdioSession) -> u64 {
+        session
+            .write_line(&json!({ "jsonrpc": "2.0", "id": 7, "method": "ping", "params": {} }))
+            .expect("write");
+        let resp = session.read_until(7, Duration::from_secs(20)).expect("read");
+        resp.get("result")
+            .and_then(|r| r.get("pid"))
+            .and_then(|p| p.as_u64())
+            .expect("pid in response")
+    }
+
+    #[test]
+    fn pooled_session_is_reused_and_dead_children_are_replaced() {
+        let args = fake_server_args();
+        let (mut first, fp, info) =
+            stdio_checkout("test-server", "python3", &args, &[]).expect("first checkout");
+        assert!(info.is_none(), "first checkout must spawn a fresh child");
+        let pid1 = ping_pid(&mut first);
+        stdio_return(
+            "test-server",
+            fp,
+            first,
+            Some((json!({ "serverInfo": {} }), "2025-06-18".to_string())),
+        );
+
+        let (mut second, fp2, info) =
+            stdio_checkout("test-server", "python3", &args, &[]).expect("second checkout");
+        assert!(
+            info.is_some(),
+            "second checkout must reuse the pooled child (handshake info carried over)"
+        );
+        let pid2 = ping_pid(&mut second);
+        assert_eq!(pid1, pid2, "the pooled child must be the same process");
+
+        // Simulate a crashed server: kill the child, hand it back as if the
+        // call had succeeded, then verify the pool notices the corpse.
+        second.child.kill().expect("kill child");
+        let _ = second.child.wait();
+        stdio_return("test-server", fp2, second, None);
+
+        let (mut third, _fp3, info) =
+            stdio_checkout("test-server", "python3", &args, &[]).expect("third checkout");
+        assert!(info.is_none(), "a dead pooled child must be discarded");
+        let pid3 = ping_pid(&mut third);
+        assert_ne!(pid2, pid3, "a fresh child must have been spawned");
+    }
+
+    #[test]
+    fn changed_command_line_never_reuses_a_stale_child() {
+        let args = fake_server_args();
+        let (mut s, fp, _info) =
+            stdio_checkout("fp-server", "python3", &args, &[]).expect("first checkout");
+        let pid1 = ping_pid(&mut s);
+        stdio_return("fp-server", fp, s, None);
+
+        let mut other_args = fake_server_args();
+        other_args[1].push_str("\n# different configuration\n");
+        let (mut fresh, _fp2, info) =
+            stdio_checkout("fp-server", "python3", &other_args, &[]).expect("second checkout");
+        assert!(info.is_none(), "a changed command line must not reuse the old child");
+        assert_ne!(pid1, ping_pid(&mut fresh), "new command line = new process");
+    }
 }

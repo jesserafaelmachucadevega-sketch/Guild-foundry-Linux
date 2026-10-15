@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { invoke } from '../../lib/api';
 import './memory.css';
 
@@ -31,6 +31,23 @@ interface MemoryEntry {
 interface MemoryHit {
   entry: MemoryEntry;
   score: number;
+  semantic?: boolean;
+}
+
+interface SemanticStatus {
+  enabled: boolean;
+  model: string | null;
+  embedded: number;
+  total: number;
+  note: string;
+}
+
+interface ReindexReport {
+  total: number;
+  embedded: number;
+  failed: number;
+  model: string;
+  firstError: string | null;
 }
 
 interface ConsolidationReport {
@@ -61,6 +78,54 @@ export function MemoryPanel(): React.ReactElement {
   const [report, setReport] = useState<ConsolidationReport | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sem, setSem] = useState<SemanticStatus | null>(null);
+  const [embedPath, setEmbedPath] = useState('');
+
+  const refreshSem = async (): Promise<void> => {
+    try {
+      const st = await invoke<SemanticStatus>('memory_semantic_status');
+      setSem(st);
+      setEmbedPath(st.model ?? '');
+    } catch {
+      setSem(null);
+    }
+  };
+
+  useEffect(() => {
+    void refreshSem();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveEmbedModel = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await invoke('memory_embed_set_model', { path: embedPath.trim() });
+      await refreshSem();
+      setStatus('embedding model set — run Reindex to index existing entries');
+    } catch (e) {
+      setStatus(`Model set failed — ${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reindex = async (): Promise<void> => {
+    setBusy(true);
+    setStatus('indexing…');
+    try {
+      const r = await invoke<ReindexReport>('memory_embed_reindex');
+      await refreshSem();
+      setStatus(
+        r.failed > 0
+          ? `indexed ${r.embedded}/${r.total} — ${r.failed} failed${r.firstError ? ` (first: ${r.firstError})` : ''}`
+          : `indexed ${r.embedded}/${r.total} entries with ${r.model.split('/').pop()}`,
+      );
+    } catch (e) {
+      setStatus(`Reindex failed — ${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   async function put(): Promise<void> {
     setBusy(true);
@@ -150,7 +215,13 @@ export function MemoryPanel(): React.ReactElement {
     <div className="gf-pane mem-panel">
       <div className="gf-pane-header">
         <span>Memory</span>
-        <span className="gf-badge">keyword search — semantic search not implemented</span>
+        <span className={`gf-badge${sem?.enabled ? ' ok' : ''}`} title={sem?.note}>
+          {sem
+            ? sem.enabled
+              ? `semantic on — ${sem.embedded}/${sem.total} indexed`
+              : 'keyword search — add an offline embedding model for semantic'
+            : 'checking semantic status…'}
+        </span>
       </div>
 
       <div className="mem-tabs">
@@ -191,6 +262,17 @@ export function MemoryPanel(): React.ReactElement {
         <button className="gf-btn" disabled={busy || query.trim().length < 2} onClick={() => void search()}>Search</button>
       </div>
 
+      <div className="mem-search">
+        <input
+          className="gf-input"
+          value={embedPath}
+          onChange={(e) => setEmbedPath(e.target.value)}
+          placeholder="offline embedding model path (…/bge-small-en-v1.5-q8_0.gguf)"
+        />
+        <button className="gf-btn" disabled={busy} onClick={() => void saveEmbedModel()}>Use model</button>
+        <button className="gf-btn" disabled={busy || !sem?.enabled} onClick={() => void reindex()}>Reindex</button>
+      </div>
+
       {status && <div className="mem-status">{status}</div>}
 
       {report && (
@@ -209,6 +291,7 @@ export function MemoryPanel(): React.ReactElement {
             <div className="mem-entry-body">{h.entry.content}</div>
             <div className="mem-entry-meta">
               <span className="gf-badge">{h.entry.claimType}</span>
+              {h.semantic && <span className="gf-badge ok">semantic</span>}
               <span className="gf-badge idle">score {(typeof h.score === 'number' ? h.score : 0).toFixed(2)}</span>
               <span className="gf-badge idle">importance {(typeof h.entry.importance === 'number' ? h.entry.importance : 0).toFixed(2)}</span>
               {h.entry.flagged && <span className="gf-badge err">flagged: {h.entry.flagged}</span>}

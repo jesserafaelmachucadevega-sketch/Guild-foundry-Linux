@@ -143,7 +143,12 @@ Status: implemented + verified at the layer level (typecheck, vite build, IPC 16
 - [x] MCP stdio transport + per-server custom headers + pagination + official-server quick-add presets
 - [x] One-shot permission grants actually consume after first successful use
 - [x] CI: IPC contract check added; cmake/clang/libclang added to the Rust job
-- [ ] Kokoro ONNX local TTS — **NOT ENABLED** (needs onnxruntime + espeak-ng + model files; status surfaced honestly in the UI; cloud TTS remains)
-- [ ] Bundled release build (`tauri build`) — whisper-helper still needs `externalBin` packaging config
+- [x] Kokoro local TTS — **ENABLED + VERIFIED on target machine** (sherpa-onnx engine + kokoro-en-v0_19; synthesized two voices, 24 kHz, RMS-validated). Local-first in `media_speak_text`; cloud is the fallback only
+- [x] Bundled release build — `externalBin` sidecar packaging in `tauri.bundle.conf.json` + `scripts/prepare_external_bin.mjs` (used by `npm run tauri:build`)
+- [x] Offline semantic memory search — local GGUF embeddings through the in-process llama.cpp engine (`gguf::embed_text`), hybrid cosine+keyword ranking, background indexing on put, `memory_embed_reindex` repair path, UI status/reindex
+- [x] MCP stdio session warming — children pooled per server, checked out per call, fingerprint-checked against config drift, killed on app exit; covered by two live-process tests
+- [x] Command-thread hygiene — `tool_execute`, media (mic/TTS), memory search/reindex and all heavy workspace file ops run on the blocking pool (no UI freezes on network/disk I/O)
+- [ ] GGUF KV-context reuse — **NOT POSSIBLE in pinned binding** (llama-cpp-2 0.1.159 exposes no `clear_kv_cache`; per-request contexts are allocated and freed correctly, just not reused). Revisit when the binding exposes cache control
 - [ ] Native Google/Outlook calendar OAuth — by design via their MCP connectors instead
+- [ ] Feature set round 2 (user-requested): cost dashboard, call transcripts → memory, creditor playbooks, unified inbox triage, LAN mobile companion — IN PROGRESS
 

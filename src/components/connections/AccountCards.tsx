@@ -506,12 +506,23 @@ interface LocalVoiceStatus {
   whisper_model: string | null;
   kokoro_available: boolean;
   kokoro_note: string;
+  kokoro: {
+    available: boolean;
+    binary: string | null;
+    dir: string | null;
+    missing: string[];
+    voices: { id: number; name: string }[];
+    default_voice: string;
+    note: string;
+  } | null;
   engine: string;
 }
 
 function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   const [status, setStatus] = useState<LocalVoiceStatus | null>(null);
   const [modelPath, setModelPath] = useState('');
+  const [kokoroDir, setKokoroDir] = useState('');
+  const [voice, setVoice] = useState('af_bella');
   const [busy, setBusy] = useState(false);
 
   const refresh = async (): Promise<void> => {
@@ -519,6 +530,9 @@ function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.
       const st = await invoke<LocalVoiceStatus>('media_local_voice_status');
       setStatus(st);
       setModelPath(st.whisper_model ?? '');
+      setKokoroDir(st.kokoro?.dir ?? '');
+      const savedVoice = await invoke<string | null>('settings_get', { key: 'media.tts_voice' });
+      if (savedVoice) setVoice(savedVoice);
     } catch {
       setStatus(null);
     }
@@ -546,6 +560,35 @@ function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.
     }
   };
 
+  const saveKokoro = async (): Promise<void> => {
+    if (!kokoroDir.trim()) {
+      onToast('Enter the path to a Kokoro model directory first');
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('media_local_set_model', { kind: 'kokoro', path: kokoroDir.trim() });
+      onToast('Kokoro set — replies can now be spoken fully offline');
+      await refresh();
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveVoice = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await invoke('settings_set', { key: 'media.tts_voice', value: voice });
+      onToast(`Voice set to ${voice} — used for both offline and cloud speech`);
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="conn-card">
       <div className="conn-card-head">
@@ -554,6 +597,11 @@ function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.
           <span className="conn-badge conn-badge-ok">Whisper ready</span>
         ) : (
           <span className="conn-badge">No model yet</span>
+        )}
+        {status?.kokoro?.available ? (
+          <span className="conn-badge conn-badge-ok">Kokoro ready</span>
+        ) : (
+          <span className="conn-badge">Kokoro off</span>
         )}
       </div>
       <p className="conn-tagline">
@@ -581,9 +629,42 @@ function LocalVoiceCard({ onToast }: { onToast: (msg: string) => void }): React.
           Refresh
         </button>
       </div>
+      <p className="conn-tagline" style={{ marginTop: 12 }}>
+        Speech output runs fully offline with Kokoro. It is used automatically whenever it is ready — the cloud
+        voice only takes over if the local engine is missing or fails.
+      </p>
+      <label className="gf-label" style={labelStyle}>
+        Kokoro model directory
+        <input
+          className="gf-input"
+          value={kokoroDir}
+          onChange={(e) => setKokoroDir(e.target.value)}
+          placeholder="/path/to/kokoro-en-v0_19"
+        />
+      </label>
+      <div className="gf-row" style={{ marginTop: 8 }}>
+        <button className="gf-btn gf-btn-sm" onClick={() => void saveKokoro()} disabled={busy}>
+          Save Kokoro
+        </button>
+      </div>
+      {status?.kokoro && status.kokoro.voices.length > 0 && (
+        <div className="gf-row" style={{ marginTop: 8 }}>
+          <select className="gf-select" value={voice} onChange={(e) => setVoice(e.target.value)}>
+            {status.kokoro.voices.map((v) => (
+              <option key={v.id} value={v.name}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+          <button className="gf-btn gf-btn-sm" onClick={() => void saveVoice()} disabled={busy}>
+            Use voice
+          </button>
+        </div>
+      )}
       <p className="conn-note" title={status?.kokoro_note}>
-        {status?.kokoro_note ??
-          'Local speech output (Kokoro ONNX) needs the ONNX runtime, espeak-ng, and the Kokoro model files; cloud TTS stays active until then.'}
+        {status?.kokoro?.note ??
+          status?.kokoro_note ??
+          'Kokoro status unknown yet — use Refresh.'}
       </p>
     </div>
   );

@@ -11,12 +11,14 @@
 //   NOTE: the DB column is named `model_id`; it stores the model_name value
 //   passed through the composite key. The two names refer to the same thing.
 //
-// NOT VERIFIED / honest limitations:
-//   - Rust cannot compile in this build environment; every command below is
-//     written with extreme care but is NOT VERIFIED until `cargo build` runs.
-//   - `memory_search` is LIKE-based keyword ranking, NOT semantic search.
-//     True embedding-based semantic clustering/search requires an offline
-//     embedding model and is explicitly out of scope here (future work).
+// Search:
+//   - `memory_search` is hybrid: when a local GGUF embedding model is
+//     configured (settings key `memory.embedding_model`, or any *.gguf dropped
+//     into app-data/models/embeddings/), entries are ranked by cosine
+//     similarity blended with keyword hits and importance. With no model it
+//     degrades to LIKE-based keyword ranking. Fully offline either way.
+//   - `memory_embed_reindex` rebuilds the embedding index; puts index in the
+//     background (best-effort — reindex is the repair path).
 //   - Contradiction detection is heuristic (negation patterns), not an LLM.
 
 use rusqlite::{params, Connection};
@@ -59,6 +61,23 @@ pub fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     ] {
         let _ = conn.execute(alter, []); // ignore "duplicate column" on re-run
     }
+    // Local semantic search index (additive, idempotent). Vectors are
+    // L2-normalised f32 blobs, so cosine similarity is a plain dot product.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS memory_embeddings (
+            provider_id TEXT NOT NULL,
+            model_id    TEXT NOT NULL,
+            version     TEXT NOT NULL,
+            scope       TEXT NOT NULL,
+            key         TEXT NOT NULL,
+            model_path  TEXT NOT NULL,
+            dim         INTEGER NOT NULL,
+            vec         BLOB NOT NULL,
+            updated_at  TEXT NOT NULL,
+            PRIMARY KEY (provider_id, model_id, version, scope, key)
+        )",
+        [],
+    );
     Ok(conn)
 }
 
@@ -177,6 +196,45 @@ pub fn memory_put(
         ],
     )
     .map_err(|e| e.to_string())?;
+    // Index into local semantic search in the background: a put must never
+    // wait on a model forward pass, and a failure here is repaired by
+    // memory_embed_reindex rather than failing the write.
+    if let Some(model_path) = embedding_model_path(&app) {
+        let app2 = app.clone();
+        let scope_c = scope.clone();
+        let provider_c = provider_id.clone();
+        let model_c = model_name.clone();
+        let version_c = version.clone();
+        let key_c = key.clone();
+        let text = format!("{} {}", key, content);
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Ok(vec) = crate::gguf::embed_text(&app2, &model_path.to_string_lossy(), &text) {
+                if let Ok(conn) = open_db(&app2) {
+                    let _ = conn.execute(
+                        "INSERT INTO memory_embeddings
+                            (provider_id, model_id, version, scope, key, model_path, dim, vec, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                         ON CONFLICT(provider_id, model_id, version, scope, key) DO UPDATE SET
+                            model_path = excluded.model_path,
+                            dim = excluded.dim,
+                            vec = excluded.vec,
+                            updated_at = excluded.updated_at",
+                        params![
+                            provider_c,
+                            model_c,
+                            version_c,
+                            scope_c,
+                            key_c,
+                            model_path.to_string_lossy().to_string(),
+                            vec.len() as i64,
+                            vec_to_blob(&vec),
+                            now_iso()
+                        ],
+                    );
+                }
+            }
+        });
+    }
     Ok(())
 }
 
@@ -218,18 +276,242 @@ pub fn memory_get(
     Ok(value)
 }
 
+// ---------------------------------------------------------------------------
+// Local semantic search (offline embeddings via the llama.cpp engine)
+// ---------------------------------------------------------------------------
+
+pub const EMBED_MODEL_KEY: &str = "memory.embedding_model";
+
+/// Explicit setting wins; otherwise the first *.gguf (sorted) dropped into
+/// app-data/models/embeddings/ is used. Everything stays on this machine.
+fn embedding_model_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    if let Ok(Some(v)) = crate::settings::settings_get(app.clone(), EMBED_MODEL_KEY.to_string()) {
+        if let Some(s) = v.as_str() {
+            let pb = std::path::PathBuf::from(s.trim());
+            if pb.is_file() {
+                return Some(pb);
+            }
+        }
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .ok()?
+        .join("models")
+        .join("embeddings");
+    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .map(|x| x.eq_ignore_ascii_case("gguf"))
+                .unwrap_or(false)
+        })
+        .collect();
+    found.sort();
+    found.into_iter().next()
+}
+
+fn vec_to_blob(v: &[f32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(v.len() * 4);
+    for x in v {
+        out.extend_from_slice(&x.to_le_bytes());
+    }
+    out
+}
+
+fn blob_to_vec(b: &[u8]) -> Vec<f32> {
+    b.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
+}
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+/// Embed one entry and upsert it into the index. Errors are returned with
+/// their reason so reindex can report honestly instead of swallowing them.
+#[allow(clippy::too_many_arguments)]
+fn embed_and_store(
+    app: &tauri::AppHandle,
+    conn: &Connection,
+    model_path: &std::path::Path,
+    scope: &str,
+    provider_id: &str,
+    model_name: &str,
+    version: &str,
+    key: &str,
+    content: &str,
+) -> Result<(), String> {
+    let text = format!("{} {}", key, content);
+    let vec = crate::gguf::embed_text(app, &model_path.to_string_lossy(), &text)?;
+    conn.execute(
+        "INSERT INTO memory_embeddings
+            (provider_id, model_id, version, scope, key, model_path, dim, vec, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(provider_id, model_id, version, scope, key) DO UPDATE SET
+            model_path = excluded.model_path,
+            dim = excluded.dim,
+            vec = excluded.vec,
+            updated_at = excluded.updated_at",
+        params![
+            provider_id,
+            model_name,
+            version,
+            scope,
+            key,
+            model_path.to_string_lossy().to_string(),
+            vec.len() as i64,
+            vec_to_blob(&vec),
+            now_iso()
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Status for the UI: is semantic search on, which model, how many indexed.
+#[tauri::command]
+pub fn memory_semantic_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let model = embedding_model_path(&app);
+    let conn = open_db(&app)?;
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+        .unwrap_or(0);
+    let model_str = model
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let embedded: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM memory_embeddings WHERE model_path = ?1",
+            params![model_str],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let enabled = model.is_some();
+    let model_json = if enabled {
+        Some(model_str.clone())
+    } else {
+        None
+    };
+    Ok(serde_json::json!({
+        "enabled": enabled,
+        "model": model_json,
+        "embedded": embedded,
+        "total": total,
+        "note": if enabled {
+            "Semantic search is on — fully offline on this machine."
+        } else {
+            "No offline embedding model yet — keyword search works. Drop a GGUF embedding model (e.g. bge-small-en-v1.5) into app-data/models/embeddings/ or set one explicitly."
+        },
+    }))
+}
+
+/// Point semantic search at a specific GGUF embedding model (empty path
+/// clears the override and returns to auto-detect).
+#[tauri::command(rename_all = "snake_case")]
+pub fn memory_embed_set_model(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let trimmed = path.trim().to_string();
+    if !trimmed.is_empty() {
+        let pb = std::path::PathBuf::from(&trimmed);
+        if !pb.is_file() {
+            return Err(format!("file not found: {}", pb.display()));
+        }
+    }
+    crate::settings::settings_set(app, EMBED_MODEL_KEY.to_string(), serde_json::json!(trimmed))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Re-embed every stored memory with the configured model. Async: the first
+/// call loads the model, and each entry costs one forward pass.
+#[tauri::command]
+pub async fn memory_embed_reindex(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || memory_embed_reindex_blocking(app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn memory_embed_reindex_blocking(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let model = embedding_model_path(&app)
+        .ok_or("no embedding model configured (see memory_semantic_status)")?;
+    let conn = open_db(&app)?;
+    let rows: Vec<(String, String, String, String, String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT scope, provider_id, model_id, version, key, value FROM memories")
+            .map_err(|e| e.to_string())?;
+        let mapped = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        mapped
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+    let total = rows.len();
+    let mut embedded = 0usize;
+    let mut first_error: Option<String> = None;
+    for (scope, provider_id, model_id, version, key, value) in &rows {
+        match embed_and_store(&app, &conn, &model, scope, provider_id, model_id, version, key, value)
+        {
+            Ok(()) => embedded += 1,
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
+            }
+        }
+    }
+    Ok(serde_json::json!({
+        "total": total,
+        "embedded": embedded,
+        "failed": total - embedded,
+        "model": model.to_string_lossy(),
+        "firstError": first_error,
+    }))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryHit {
     pub entry: MemoryEntry,
     pub score: f64,
+    /// True when cosine similarity (not just keyword hits) drove the rank.
+    pub semantic: bool,
 }
 
-/// LIKE-based keyword search within one composite isolation domain.
-/// Honest doc: this is keyword ranking (token hits + importance), NOT
-/// semantic/embedding search. All five key parts are mandatory filters.
+/// Hybrid search within one composite isolation domain: when an offline
+/// embedding model is available, cosine similarity is blended with keyword
+/// hits and importance; otherwise this is keyword ranking only. All five key
+/// parts are mandatory filters.
 #[tauri::command(rename_all = "snake_case")]
-pub fn memory_search(
+pub async fn memory_search(
+    app: tauri::AppHandle,
+    query: String,
+    scope: String,
+    provider_id: String,
+    model_name: String,
+    version: String,
+) -> Result<Vec<MemoryHit>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        memory_search_blocking(app, query, scope, provider_id, model_name, version)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn memory_search_blocking(
     app: tauri::AppHandle,
     query: String,
     scope: String,
@@ -244,9 +526,37 @@ pub fn memory_search(
         .map(|t| t.to_lowercase())
         .filter(|t| t.len() > 1)
         .collect();
-    if tokens.is_empty() {
+
+    // Optional semantic pass: query embedding vs stored per-entry vectors.
+    let mut semantic: HashMap<String, f32> = HashMap::new();
+    if let Some(model_path) = embedding_model_path(&app) {
+        if let Ok(qv) = crate::gguf::embed_text(&app, &model_path.to_string_lossy(), &query) {
+            let mut estmt = conn
+                .prepare(
+                    "SELECT key, vec FROM memory_embeddings
+                     WHERE scope = ?1 AND provider_id = ?2 AND model_id = ?3 AND version = ?4",
+                )
+                .map_err(|e| e.to_string())?;
+            let vrows = estmt
+                .query_map(params![scope, provider_id, model_name, version], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in vrows {
+                let (k, blob) = row.map_err(|e| e.to_string())?;
+                let v = blob_to_vec(&blob);
+                if v.len() == qv.len() {
+                    semantic.insert(k, dot(&qv, &v));
+                }
+            }
+        }
+    }
+    let semantic_on = !semantic.is_empty();
+
+    if tokens.is_empty() && !semantic_on {
         return Ok(Vec::new());
     }
+
     let mut stmt = conn
         .prepare(
             "SELECT scope, provider_id, model_id, version, scope_id, key, value,
@@ -270,9 +580,26 @@ pub fn memory_search(
                 matched += 1;
             }
         }
-        if matched > 0 {
-            let score = matched as f64 / tokens.len() as f64 * 0.7 + entry.importance * 0.3;
-            hits.push(MemoryHit { entry, score });
+        let keyword = if tokens.is_empty() {
+            0.0
+        } else {
+            matched as f64 / tokens.len() as f64
+        };
+        let keyword_score = keyword * 0.7 + entry.importance * 0.3;
+        let sem = semantic.get(&entry.key).copied().unwrap_or(0.0) as f64;
+        if semantic_on && sem >= 0.25 {
+            let score = (0.75 * sem + 0.25 * entry.importance).max(keyword_score);
+            hits.push(MemoryHit {
+                entry,
+                score,
+                semantic: true,
+            });
+        } else if matched > 0 {
+            hits.push(MemoryHit {
+                entry,
+                score: keyword_score,
+                semantic: false,
+            });
         }
     }
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));

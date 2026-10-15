@@ -288,6 +288,9 @@ fn main() {
             memory::memory_search,
             memory::memory_consolidate,
             memory::memory_synthesize,
+            memory::memory_semantic_status,
+            memory::memory_embed_reindex,
+            memory::memory_embed_set_model,
             index::index_rebuild,
             index::index_search,
             index::index_watch_start,
@@ -330,6 +333,12 @@ fn main() {
             suggestions::suggestions_accept,
             suggestions::suggestions_dismiss,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Guild Foundry AI");
+        .build(tauri::generate_context!())
+        .expect("failed to build Guild Foundry AI")
+        .run(|_app_handle, event| {
+            // Pooled stdio MCP children must not outlive the app.
+            if let tauri::RunEvent::Exit = event {
+                mcp::stdio_shutdown();
+            }
+        });
 }
