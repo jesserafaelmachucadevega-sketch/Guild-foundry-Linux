@@ -625,6 +625,45 @@ fn tool_registry() -> Vec<ToolDef> {
             domain: "external_apis".into(),
             ready: true,
         },
+        ToolDef {
+            name: "inbox.fetch".into(),
+            description: "Unified triage digest: unread email plus inbound texts from the last N hours (default 24) in one list, newest first. Each source reports honestly whether it was reachable. Use this when the user asks to check their inbox, catch up on messages, or find anything urgent."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "hours": { "type": "number", "description": "Look-back window in hours (1-168, default 24)." },
+                    "include_sms": { "type": "boolean", "description": "Include inbound texts from the phone number (default true)." }
+                }),
+                &[],
+            ),
+            risk: RiskLevel::Low,
+            domain: "external_apis".into(),
+            ready: true,
+        },
+        // Playbook tools (structured negotiation guidance)
+        ToolDef {
+            name: "playbook.list".into(),
+            description: "List the negotiation playbooks available to guide a difficult conversation (creditor calls, debt validation, hardship plans, general negotiation). Returns ids, titles, and when to use each."
+                .into(),
+            schema: schema(serde_json::json!({}), &[]),
+            risk: RiskLevel::Low,
+            domain: "filesystem".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "playbook.get".into(),
+            description: "Fetch a full playbook by id: objective, preparation steps, exact key phrases, red flags, escalation path, and a letter template when one exists. Follow it when the user asks the agent to call or negotiate on their behalf."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "id": { "type": "string", "description": "Playbook id from playbook.list (e.g. creditor-negotiation)." }
+                }),
+                &["id"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "filesystem".into(),
+            ready: true,
+        },
         // Telephony tools
         ToolDef {
             name: "phone.sms_send".into(),
@@ -664,6 +703,34 @@ fn tool_registry() -> Vec<ToolDef> {
             schema: schema(
                 serde_json::json!({
                     "call_sid": { "type": "string", "description": "Call sid to look up (optional — omit to list recent calls)." }
+                }),
+                &[],
+            ),
+            risk: RiskLevel::Low,
+            domain: "telephony".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "phone.call_recordings".into(),
+            description: "List the recordings of a call. Recordings only exist when recording was enabled before the call started."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "call_sid": { "type": "string", "description": "Call sid whose recordings to list." }
+                }),
+                &["call_sid"],
+            ),
+            risk: RiskLevel::Low,
+            domain: "telephony".into(),
+            ready: true,
+        },
+        ToolDef {
+            name: "phone.call_transcribe".into(),
+            description: "Download a call's newest recording, transcribe it fully offline (local Whisper), and store the transcript in memory under a call-<sid> key. Omit call_sid to use the most recent call."
+                .into(),
+            schema: schema(
+                serde_json::json!({
+                    "call_sid": { "type": "string", "description": "Call sid to transcribe (optional — omit for the latest call)." }
                 }),
                 &[],
             ),
@@ -813,7 +880,7 @@ fn tool_domain(tool: &str) -> &str {
         "git"
     } else if tool.starts_with("mcp.") {
         "mcp"
-    } else if tool.starts_with("web.") || tool.starts_with("github.") || tool.starts_with("hf.") || tool.starts_with("email.") || tool.starts_with("calendar.") || tool.starts_with("cloud.") {
+    } else if tool.starts_with("web.") || tool.starts_with("github.") || tool.starts_with("hf.") || tool.starts_with("email.") || tool.starts_with("calendar.") || tool.starts_with("cloud.") || tool.starts_with("inbox.") {
         "external_apis"
     } else if tool.starts_with("phone.") {
         "telephony"
@@ -1564,6 +1631,38 @@ fn tool_execute_blocking(
             let drive_id = arg_str(&args, "drive_id")?;
             crate::integrations::cloud::drive_operation(&app, &drive_id, "search", &args)
         }
+        // Inbox triage
+        "inbox.fetch" => {
+            let hours = args.get("hours").and_then(|v| v.as_i64()).unwrap_or(24);
+            let include_sms = args
+                .get("include_sms")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            crate::inbox::fetch(&app, hours, include_sms)
+        }
+        // Playbook tools
+        "playbook.list" => {
+            let books = crate::playbooks::registry(&app);
+            let list: Vec<serde_json::Value> = books
+                .iter()
+                .map(|b| {
+                    serde_json::json!({
+                        "id": b.id,
+                        "title": b.title,
+                        "when_to_use": b.when_to_use,
+                        "user_supplied": b.user_supplied,
+                    })
+                })
+                .collect();
+            Ok(serde_json::json!({ "count": list.len(), "playbooks": list }))
+        }
+        "playbook.get" => {
+            let id = arg_str(&args, "id")?;
+            let book = crate::playbooks::get(&app, &id).ok_or_else(|| {
+                format!("no playbook with id '{}' — use playbook.list first", id)
+            })?;
+            serde_json::to_value(&book).map_err(|e| e.to_string())
+        }
         // Telephony tools
         "phone.sms_send" => {
             let to = arg_str(&args, "to")?;
@@ -1579,6 +1678,14 @@ fn tool_execute_blocking(
         "phone.call_status" => {
             let sid = args.get("call_sid").and_then(|v| v.as_str());
             crate::integrations::twilio::call_status(&app, sid)
+        }
+        "phone.call_recordings" => {
+            let sid = arg_str(&args, "call_sid")?;
+            crate::integrations::twilio::call_recordings(&app, &sid)
+        }
+        "phone.call_transcribe" => {
+            let sid = args.get("call_sid").and_then(|v| v.as_str());
+            crate::integrations::twilio::transcribe_call(&app, sid)
         }
         // Git tools
         "git.status" => {

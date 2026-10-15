@@ -447,3 +447,171 @@ pub fn synthesize(
         "voice": voice_name,
     }))
 }
+
+// ---------------------------------------------------------------------------
+// WAV decoding for offline transcription (Twilio recordings are PCM WAV)
+// ---------------------------------------------------------------------------
+
+/// Decode a PCM WAV file to 16 kHz mono f32 for whisper-helper. Twilio
+/// recordings are mono 8 kHz 16-bit PCM; linear interpolation is plenty for
+/// speech at this quality level. Bounded: max ~1 hour of audio.
+pub fn parse_wav_to_16k_mono(bytes: &[u8]) -> Result<Vec<f32>, String> {
+    if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err("not a RIFF/WAVE file".to_string());
+    }
+    let mut pos = 12usize;
+    let mut fmt: Option<(u16, u16, u32, u16)> = None; // format, channels, rate, bits
+    let mut data: Option<&[u8]> = None;
+    while pos + 8 <= bytes.len() {
+        let id = &bytes[pos..pos + 4];
+        let size = u32::from_le_bytes([
+            bytes[pos + 4],
+            bytes[pos + 5],
+            bytes[pos + 6],
+            bytes[pos + 7],
+        ]) as usize;
+        let body_start = pos + 8;
+        let body_end = body_start
+            .checked_add(size)
+            .filter(|e| *e <= bytes.len())
+            .ok_or("truncated WAV chunk")?;
+        if id == b"fmt " && size >= 16 {
+            fmt = Some((
+                u16::from_le_bytes([bytes[body_start], bytes[body_start + 1]]),
+                u16::from_le_bytes([bytes[body_start + 2], bytes[body_start + 3]]),
+                u32::from_le_bytes([
+                    bytes[body_start + 4],
+                    bytes[body_start + 5],
+                    bytes[body_start + 6],
+                    bytes[body_start + 7],
+                ]),
+                u16::from_le_bytes([bytes[body_start + 14], bytes[body_start + 15]]),
+            ));
+        } else if id == b"data" {
+            data = Some(&bytes[body_start..body_end]);
+        }
+        pos = body_end + (size & 1); // chunks are word-aligned
+    }
+    let (format, channels, rate, bits) = fmt.ok_or("WAV has no fmt chunk")?;
+    if format != 1 {
+        return Err(format!(
+            "WAV format {} unsupported (need uncompressed PCM)",
+            format
+        ));
+    }
+    if bits != 8 && bits != 16 {
+        return Err(format!("WAV {}-bit samples unsupported (need 8 or 16)", bits));
+    }
+    if channels == 0 || rate == 0 {
+        return Err("invalid WAV header".to_string());
+    }
+    let data = data.ok_or("WAV has no data chunk")?;
+    let sample_bytes = (bits as usize) / 8;
+    let frame_bytes = sample_bytes * channels as usize;
+    let frames = (data.len() / frame_bytes).min(rate as usize * 3600);
+
+    let mut mono = Vec::with_capacity(frames);
+    for i in 0..frames {
+        let base = i * frame_bytes;
+        let mut acc = 0f32;
+        for c in 0..channels as usize {
+            let off = base + c * sample_bytes;
+            let s = if bits == 16 {
+                i16::from_le_bytes([data[off], data[off + 1]]) as f32 / 32768.0
+            } else {
+                (data[off] as f32 - 128.0) / 128.0
+            };
+            acc += s;
+        }
+        mono.push(acc / channels as f32);
+    }
+
+    const TARGET: u32 = 16_000;
+    if rate == TARGET {
+        return Ok(mono);
+    }
+    let ratio = TARGET as f64 / rate as f64;
+    let out_len = ((mono.len() as f64) * ratio).round() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src = i as f64 / ratio;
+        let i0 = src.floor() as usize;
+        let frac = (src - i0 as f64) as f32;
+        let s0 = mono.get(i0).copied().unwrap_or(0.0);
+        let s1 = mono.get(i0 + 1).copied().unwrap_or(s0);
+        out.push(s0 + (s1 - s0) * frac);
+    }
+    Ok(out)
+}
+
+/// Transcribe a WAV file fully offline (local Whisper helper).
+pub fn transcribe_wav_file(
+    app: &tauri::AppHandle,
+    path: &std::path::Path,
+) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("cannot read recording: {}", e))?;
+    if bytes.len() > 100 * 1024 * 1024 {
+        return Err("recording too large to transcribe locally (max 100 MB)".to_string());
+    }
+    let samples = parse_wav_to_16k_mono(&bytes)?;
+    if samples.len() < 1600 {
+        return Err("recording is too short (less than 0.1 s of audio)".to_string());
+    }
+    transcribe(app, &samples)
+}
+
+#[cfg(test)]
+mod wav_tests {
+    use super::*;
+
+    fn wav_bytes(rate: u32, channels: u16, bits: u16, frames: usize, sample: i16) -> Vec<u8> {
+        let data_len = frames * channels as usize * (bits as usize / 8);
+        let mut b = Vec::new();
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&(36 + data_len as u32).to_le_bytes());
+        b.extend_from_slice(b"WAVE");
+        b.extend_from_slice(b"fmt ");
+        b.extend_from_slice(&16u32.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        b.extend_from_slice(&channels.to_le_bytes());
+        b.extend_from_slice(&rate.to_le_bytes());
+        let byte_rate = rate * channels as u32 * (bits as usize / 8) as u32;
+        b.extend_from_slice(&byte_rate.to_le_bytes());
+        b.extend_from_slice(&(channels * (bits / 8)).to_le_bytes());
+        b.extend_from_slice(&bits.to_le_bytes());
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&(data_len as u32).to_le_bytes());
+        for _ in 0..frames * channels as usize {
+            b.extend_from_slice(&sample.to_le_bytes());
+        }
+        b
+    }
+
+    #[test]
+    fn parses_8khz_stereo_and_resamples_to_16k_mono() {
+        let bytes = wav_bytes(8000, 2, 16, 800, 16384);
+        let samples = parse_wav_to_16k_mono(&bytes).expect("parse");
+        assert!(
+            (samples.len() as f64 - 1600.0).abs() <= 2.0,
+            "expected ~1600 samples, got {}",
+            samples.len()
+        );
+        assert!(
+            samples.iter().all(|s| (*s - 0.5).abs() < 0.01),
+            "a constant tone must stay constant through the resampler"
+        );
+    }
+
+    #[test]
+    fn parses_16khz_mono_without_resampling() {
+        let bytes = wav_bytes(16_000, 1, 16, 1600, -16384);
+        let samples = parse_wav_to_16k_mono(&bytes).expect("parse");
+        assert_eq!(samples.len(), 1600);
+        assert!(samples.iter().all(|s| (*s + 0.5).abs() < 0.01));
+    }
+
+    #[test]
+    fn rejects_non_wav_input() {
+        assert!(parse_wav_to_16k_mono(b"definitely not audio at all").is_err());
+    }
+}

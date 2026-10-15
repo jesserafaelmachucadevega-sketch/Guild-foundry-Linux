@@ -12,6 +12,7 @@ import { McpPanel } from '../mcp/McpPanel';
 import { SecurityView } from '../security/SecurityView';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { UpdaterPanel } from '../diagnostics/UpdaterPanel';
+import { CostPanel } from '../diagnostics/CostPanel';
 import './hub.css';
 
 interface Props {
@@ -22,7 +23,7 @@ interface Props {
   onEditPrompts: () => void;
 }
 
-type HubTab = 'overview' | 'registry' | 'security' | 'diagnostics' | 'updates' | 'appearance';
+type HubTab = 'overview' | 'registry' | 'security' | 'usage' | 'diagnostics' | 'updates' | 'appearance';
 type RegistryTab = 'tools' | 'connections' | 'mcp';
 
 function OverviewPanel({ onNavigate }: { onNavigate: (s: NavSection) => void }): React.ReactElement {
@@ -141,6 +142,7 @@ export function SystemHub(props: Props): React.ReactElement {
                 ['overview', 'Overview'],
                 ['registry', 'Tools & Registry'],
                 ['security', 'Security'],
+                ['usage', 'Usage & Cost'],
                 ['diagnostics', 'Diagnostics'],
                 ['updates', 'Updates'],
                 ['appearance', 'Appearance'],
@@ -177,6 +179,7 @@ export function SystemHub(props: Props): React.ReactElement {
             </div>
           )}
           {tab === 'security' && <SecurityView onToast={onToast} />}
+          {tab === 'usage' && <CostPanel onToast={onToast} />}
           {tab === 'diagnostics' && <DiagnosticsPanel onToast={onToast} />}
           {tab === 'updates' && <UpdaterPanel onToast={onToast} />}
           {tab === 'appearance' && (

@@ -1543,6 +1543,7 @@ pub async fn provider_chat_complete(
     })?;
     let (content, pt, ct) = parse_complete(&cfg.kind, &body)?;
     record_tokens(pt, ct);
+    crate::cost::record(&app, &provider_id, &model_id, pt, ct);
     Ok(CompleteResult {
         content,
         latency_ms: started.elapsed().as_millis() as u64,
@@ -1704,11 +1705,16 @@ async fn run_stream(
         let app2 = app.clone();
         let sid = stream_id.to_string();
         let mid = model_id.to_string();
-        return tauri::async_runtime::spawn_blocking(move || {
+        let result = tauri::async_runtime::spawn_blocking(move || {
             crate::gguf::stream_generate(&app2, &sid, &mid, &msgs, &gp)
         })
         .await
         .map_err(|e| e.to_string())?;
+        // Local models are free, but their token counts belong in the ledger.
+        if let Ok((pt, ct)) = &result {
+            crate::cost::record(&app, &cfg.id, model_id, *pt, *ct);
+        }
+        return result.map(|_| ());
     }
     let key = crate::secrets::keyring_get(&provider_key_name(&cfg.id));
     let target = build_chat_target(cfg, key.as_deref(), model_id, messages, params, true)?;
@@ -1803,6 +1809,13 @@ async fn run_stream(
     }
 
     record_tokens(state.prompt_tokens, state.completion_tokens);
+    crate::cost::record(
+        &app,
+        &cfg.id,
+        model_id,
+        state.prompt_tokens,
+        state.completion_tokens,
+    );
     emit_chunk(
         &app,
         &ChunkPayload {

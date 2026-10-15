@@ -490,13 +490,14 @@ fn emit(app: &tauri::AppHandle, stream_id: &str, delta: Option<&str>, done: bool
 }
 
 /// Streaming generation for `provider_chat_stream` when kind == "gguf".
+/// Returns (prompt_tokens, completion_tokens) so the caller can ledger them.
 pub fn stream_generate(
     app: &tauri::AppHandle,
     stream_id: &str,
     model_path: &str,
     messages: &[(String, String)],
     p: &GenParams,
-) -> Result<(), String> {
+) -> Result<(u64, u64), String> {
     let started = Instant::now();
     let res = generate_core(app, stream_id, model_path, messages, p, |delta| {
         emit(app, stream_id, Some(delta), false, None, 0, 0, started.elapsed().as_millis() as u64);
@@ -513,7 +514,7 @@ pub fn stream_generate(
                 completion_tokens,
                 started.elapsed().as_millis() as u64,
             );
-            Ok(())
+            Ok((prompt_tokens, completion_tokens))
         }
         // The caller (provider_chat_stream) emits the single error event.
         // Emitting here too delivered every failure twice to the frontend.

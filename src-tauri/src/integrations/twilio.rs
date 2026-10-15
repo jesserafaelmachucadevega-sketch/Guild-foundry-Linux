@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use tauri::Manager as _;
 
 use super::AccountTest;
 
@@ -186,6 +187,11 @@ pub fn call_start(
     if let Some(pair) = twiml {
         form.push(pair);
     }
+    // Recording is opt-in (settings key phone.record_calls) — recording laws
+    // vary by jurisdiction; the UI states that plainly.
+    if record_enabled(app) {
+        form.push(("Record".to_string(), "true".to_string()));
+    }
     let (code, text) = tauri::async_runtime::block_on(post_form(&sid, &token, &call_url, form))?;
     if code == 201 {
         let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
@@ -284,4 +290,263 @@ pub fn twilio_test_connection(app: tauri::AppHandle) -> Result<AccountTest, Stri
             latency_ms: started.elapsed().as_millis() as u64,
         },
     })
+}
+
+// ---------------------------------------------------------------------------
+// Call recordings → offline transcription → memory
+// ---------------------------------------------------------------------------
+
+pub const RECORD_KEY: &str = "phone.record_calls";
+
+pub fn record_enabled(app: &tauri::AppHandle) -> bool {
+    crate::settings::settings_get(app.clone(), RECORD_KEY.to_string())
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// List a call's recordings (empty when the call was not recorded).
+pub fn call_recordings(app: &tauri::AppHandle, call_sid: &str) -> Result<Value, String> {
+    let (sid, _from) = load_config(app)?;
+    let token = load_token()?;
+    if call_sid.trim().is_empty() {
+        return Err("call_recordings needs a call sid".to_string());
+    }
+    let url = format!(
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Calls/{}/Recordings.json",
+        sid,
+        call_sid.trim()
+    );
+    let (code, text) = tauri::async_runtime::block_on(get_json(&sid, &token, &url))?;
+    if code != 200 {
+        return Err(twilio_error(code, &text));
+    }
+    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let items: Vec<Value> = v
+        .get("recordings")
+        .and_then(|r| r.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|r| {
+                    json!({
+                        "sid": r.get("sid"),
+                        "duration": r.get("duration"),
+                        "date_created": r.get("date_created"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(json!({ "call_sid": call_sid.trim(), "count": items.len(), "recordings": items }))
+}
+
+fn latest_call_sid(app: &tauri::AppHandle) -> Result<String, String> {
+    let (sid, _from) = load_config(app)?;
+    let token = load_token()?;
+    let url = format!(
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Calls.json?PageSize=1",
+        sid
+    );
+    let (code, text) = tauri::async_runtime::block_on(get_json(&sid, &token, &url))?;
+    if code != 200 {
+        return Err(twilio_error(code, &text));
+    }
+    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    v.get("calls")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .and_then(|c| c.get("sid"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "no calls found on this account".to_string())
+}
+
+/// Download the newest recording of a call as WAV into app-data. Returns
+/// (recording_sid, path). Uses its own client: recordings can be large.
+fn download_recording(
+    app: &tauri::AppHandle,
+    call_sid: &str,
+) -> Result<(String, std::path::PathBuf), String> {
+    let (sid, _from) = load_config(app)?;
+    let token = load_token()?;
+    let list_url = format!(
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Calls/{}/Recordings.json",
+        sid,
+        call_sid
+    );
+    let (code, text) = tauri::async_runtime::block_on(get_json(&sid, &token, &list_url))?;
+    if code != 200 {
+        return Err(twilio_error(code, &text));
+    }
+    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let newest = v
+        .get("recordings")
+        .and_then(|r| r.as_array())
+        .and_then(|a| a.last())
+        .ok_or_else(|| {
+            "this call has no recordings — recordings only exist when 'Record calls' was enabled before the call started".to_string()
+        })?;
+    let rec_sid = newest
+        .get("sid")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
+    let uri = newest
+        .get("uri")
+        .and_then(|u| u.as_str())
+        .ok_or_else(|| "recording entry has no uri".to_string())?
+        .replace(".json", ".wav");
+    let wav_url = format!("https://api.twilio.com{}", uri);
+
+    let bytes = tauri::async_runtime::block_on(async {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("HTTP client failed: {}", e))?;
+        let resp = client
+            .get(&wav_url)
+            .basic_auth(&sid, Some(token))
+            .send()
+            .await
+            .map_err(|e| format!("recording download failed: {}", e))?;
+        let status = resp.status().as_u16();
+        if status != 200 {
+            return Err(format!("recording download failed: HTTP {}", status));
+        }
+        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        Ok::<Vec<u8>, String>(bytes.to_vec())
+    })?;
+    if bytes.len() < 44 || bytes.len() > 100 * 1024 * 1024 {
+        return Err("recording is empty or implausibly large (max 100 MB)".to_string());
+    }
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("media")
+        .join("calls");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("call-{}.wav", call_sid));
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok((rec_sid, path))
+}
+
+/// Newest call recording → offline transcription → memory. Local Whisper is
+/// the preference (no cloud); cloud STT is only the fallback when the local
+/// model/helper is missing.
+pub fn transcribe_call(app: &tauri::AppHandle, call_sid: Option<&str>) -> Result<Value, String> {
+    let call_sid = match call_sid.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => s.to_string(),
+        None => latest_call_sid(app)?,
+    };
+    let (rec_sid, path) = download_recording(app, &call_sid)?;
+
+    let (text, engine) = match crate::localvoice::transcribe_wav_file(app, &path) {
+        Ok(t) => (t, "whisper-local"),
+        Err(local_err) => {
+            let audio = path.to_string_lossy().to_string();
+            match crate::media::transcribe(None, Some(&audio), None, None) {
+                Ok(v) => (
+                    v.get("text")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    "cloud",
+                ),
+                Err(cloud_err) => {
+                    return Err(format!(
+                        "local transcription failed ({}) and cloud transcription is unavailable ({})",
+                        local_err, cloud_err
+                    ))
+                }
+            }
+        }
+    };
+    if text.trim().is_empty() {
+        return Err("the recording produced an empty transcript".to_string());
+    }
+
+    let memory_key = format!("call-{}", call_sid);
+    let metadata = json!({
+        "source": "twilio-recording",
+        "call_sid": call_sid,
+        "recording_sid": rec_sid,
+        "audio_path": path.to_string_lossy(),
+        "engine": engine,
+    });
+    let stored = crate::memory::memory_put(
+        app.clone(),
+        "global".to_string(),
+        "phone".to_string(),
+        "twilio".to_string(),
+        "v1".to_string(),
+        None,
+        memory_key.clone(),
+        text.clone(),
+        Some(metadata.to_string()),
+        Some("verified_fact".to_string()),
+    );
+
+    Ok(json!({
+        "call_sid": call_sid,
+        "recording_sid": rec_sid,
+        "transcript": text,
+        "audio_path": path.to_string_lossy(),
+        "engine": engine,
+        "stored_in_memory": stored.is_ok(),
+        "memory_key": memory_key,
+        "memory_error": stored.err(),
+    }))
+}
+
+/// Connections button + agent tool: transcribe the latest (or given) call.
+#[tauri::command(rename_all = "snake_case")]
+pub fn phone_call_transcribe(
+    app: tauri::AppHandle,
+    call_sid: Option<String>,
+) -> Result<Value, String> {
+    transcribe_call(&app, call_sid.as_deref())
+}
+
+/// Recent inbound text messages, newest first (for inbox triage).
+pub fn messages_recent(app: &tauri::AppHandle, limit: u64) -> Result<Value, String> {
+    let (sid, from_number) = load_config(app)?;
+    let token = load_token()?;
+    let n = limit.clamp(1, 100);
+    let url = format!(
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json?PageSize={}",
+        sid, n
+    );
+    let (code, text) = tauri::async_runtime::block_on(get_json(&sid, &token, &url))?;
+    if code != 200 {
+        return Err(twilio_error(code, &text));
+    }
+    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let items: Vec<Value> = v
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|m| {
+                    // Inbound only: not from our own number, and direction says so.
+                    let direction = m.get("direction").and_then(|d| d.as_str()).unwrap_or("");
+                    let from = m.get("from").and_then(|f| f.as_str()).unwrap_or("");
+                    direction.starts_with("inbound") && from != from_number
+                })
+                .map(|m| {
+                    json!({
+                        "sid": m.get("sid"),
+                        "from": m.get("from"),
+                        "body": m.get("body"),
+                        "date": m.get("date_sent"),
+                        "status": m.get("status"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(json!({ "count": items.len(), "messages": items }))
 }

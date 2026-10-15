@@ -13,11 +13,13 @@
 
 mod agents;
 mod build;
+mod cost;
 mod db;
 mod diagnostics;
 mod git;
 mod gguf;
 mod harness;
+mod inbox;
 mod index;
 mod integrations;
 mod localvoice;
@@ -25,6 +27,7 @@ mod mcp;
 mod media;
 mod memory;
 mod os_info;
+mod playbooks;
 mod providers;
 mod research;
 mod scheduler;
@@ -224,6 +227,7 @@ fn main() {
             integrations::email::email_test_connection,
             integrations::calendar::calendar_test_connection,
             integrations::twilio::twilio_test_connection,
+            integrations::twilio::phone_call_transcribe,
             harness::harness_thread_load,
             harness::harness_thread_save,
             harness::harness_thread_clear,
@@ -291,6 +295,14 @@ fn main() {
             memory::memory_semantic_status,
             memory::memory_embed_reindex,
             memory::memory_embed_set_model,
+            // Usage & cost ledger
+            cost::cost_summary,
+            cost::cost_prices,
+            cost::cost_price_set,
+            cost::cost_price_remove,
+            cost::cost_usage_clear,
+            // Unified inbox triage
+            inbox::inbox_fetch,
             index::index_rebuild,
             index::index_search,
             index::index_watch_start,

@@ -382,6 +382,7 @@ function PhoneCard({ onToast }: { onToast: (msg: string) => void }): React.React
   const [hasToken, setHasToken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<AccountTest | null>(null);
+  const [recordCalls, setRecordCalls] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -398,10 +399,49 @@ function PhoneCard({ onToast }: { onToast: (msg: string) => void }): React.React
         if (live) setHasToken(keys.includes('gfa-twilio:auth'));
       })
       .catch(() => {});
+    void invoke<boolean | null>('settings_get', { key: 'phone.record_calls' })
+      .then((v) => {
+        if (live && typeof v === 'boolean') setRecordCalls(v);
+      })
+      .catch(() => {});
     return () => {
       live = false;
     };
   }, []);
+
+  const toggleRecord = async (next: boolean): Promise<void> => {
+    setRecordCalls(next);
+    try {
+      await invoke('settings_set', { key: 'phone.record_calls', value: next });
+      onToast(
+        next
+          ? 'Call recording enabled for new calls — make sure you have consent to record in your jurisdiction.'
+          : 'Call recording disabled',
+      );
+    } catch (e) {
+      onToast(errText(e));
+    }
+  };
+
+  const transcribeLast = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const r = await invoke<{ transcript: string; memory_key: string; stored_in_memory: boolean; engine: string }>(
+        'phone_call_transcribe',
+        {},
+      );
+      const head = r.transcript.slice(0, 100) + (r.transcript.length > 100 ? '…' : '');
+      onToast(
+        r.stored_in_memory
+          ? `Transcript stored in memory (${r.memory_key}): ${head}`
+          : `Transcript (${r.engine}): ${head}`,
+      );
+    } catch (e) {
+      onToast(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async (): Promise<void> => {
     if (!accountSid.trim() || !fromNumber.trim()) {
@@ -496,7 +536,23 @@ function PhoneCard({ onToast }: { onToast: (msg: string) => void }): React.React
         <button className="gf-btn gf-btn-sm" onClick={() => void remove()} disabled={busy}>
           Remove
         </button>
+        <button
+          className="gf-btn gf-btn-sm"
+          onClick={() => void transcribeLast()}
+          disabled={busy || !hasToken}
+          title="Download the newest call recording, transcribe it offline, and store it in memory"
+        >
+          Transcribe last call
+        </button>
       </div>
+      <label className="gf-label" style={{ ...labelStyle, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={recordCalls}
+          onChange={(e) => void toggleRecord(e.target.checked)}
+        />
+        Record calls (enables transcripts; you are responsible for consent laws)
+      </label>
     </div>
   );
 }
