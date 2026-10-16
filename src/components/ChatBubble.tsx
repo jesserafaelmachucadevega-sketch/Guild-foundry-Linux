@@ -12,6 +12,9 @@ interface Props {
   onEmojiReaction?: (messageId: string, emoji: string) => void;
   reactions?: Record<string, Record<string, number>>;
   onArtifactSubmit?: (message: ChatMessage, artifact: Artifact, values: Record<string, unknown>) => void;
+  /** Optional slot rendered at the opposite end of the action row — used by
+   *  the agent for its live "what is happening" line and the OPEN link. */
+  statusSlot?: React.ReactNode;
   /** Assistant bubble color: blue for cloud models, green for local ones. */
   assistantVariant?: 'cloud' | 'local';
 }
@@ -29,7 +32,7 @@ function renderText(content: string): React.ReactNode {
   });
 }
 
-export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReaction, reactions, onArtifactSubmit, assistantVariant }: Props): React.ReactElement {
+export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReaction, reactions, onArtifactSubmit, statusSlot, assistantVariant }: Props): React.ReactElement {
   const [showEmojis, setShowEmojis] = useState(false);
   const isUser = message.role === 'user';
 
@@ -85,31 +88,34 @@ export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReactio
         ))}
       </div>
       <div className="gf-bubble-actions-row">
-        {onReply && (
-          <button className="gf-icon-btn gf-reply" onClick={reply} title="Reply">
-            ↩
+        {statusSlot}
+        <span className="gf-bubble-actions">
+          {onReply && (
+            <button className="gf-icon-btn gf-reply" onClick={reply} title="Reply">
+              ↩
+            </button>
+          )}
+          <button className="gf-icon-btn gf-emoji-btn" onClick={() => setShowEmojis((s) => !s)} title="React">
+            😊
           </button>
-        )}
-        <button className="gf-icon-btn gf-emoji-btn" onClick={() => setShowEmojis((s) => !s)} title="React">
-          😊
-        </button>
-        {showEmojis && (
-          <div className="gf-emoji-picker">
-            {EMOJI_REACTIONS.map((e) => (
-              <button key={e} className="gf-emoji-option" onClick={() => react(e)}>
-                {e}
-              </button>
-            ))}
-          </div>
-        )}
-        {onBranch && message.role !== 'user' && (
-          <button className="gf-icon-btn" onClick={branch} title="Fork thread from here">
-            Fork
+          {showEmojis && (
+            <div className="gf-emoji-picker">
+              {EMOJI_REACTIONS.map((e) => (
+                <button key={e} className="gf-emoji-option" onClick={() => react(e)}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+          {onBranch && message.role !== 'user' && (
+            <button className="gf-icon-btn" onClick={branch} title="Fork thread from here">
+              Fork
+            </button>
+          )}
+          <button className="gf-icon-btn" onClick={copy} title="Copy to clipboard">
+            Copy
           </button>
-        )}
-        <button className="gf-icon-btn" onClick={copy} title="Copy to clipboard">
-          Copy
-        </button>
+        </span>
       </div>
     </div>
   );

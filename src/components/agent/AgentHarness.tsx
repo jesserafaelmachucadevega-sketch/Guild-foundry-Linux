@@ -19,9 +19,9 @@
 // the new result as the next user message — the visible thread keeps the
 // full history.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { invoke, isDesktop, DesktopCapabilityRequired } from '../../lib/api';
+import { invoke, isDesktop, DesktopCapabilityRequired, copyToClipboard } from '../../lib/api';
 import {
   runToolLoop,
   type ToolCall,
@@ -128,6 +128,14 @@ interface ActivityItem {
   status: 'running' | 'ok' | 'failed' | 'blocked';
   detail?: string;
   ms?: number;
+  /** Friendly service name when the tool is a known provider (Tavily, Context7…). */
+  service?: string;
+  /** Capped copy of the call arguments (search terms, paths, commands). */
+  args?: Record<string, unknown>;
+  /** Capped preview of what came back, for the activity panel. */
+  result?: string;
+  /** Primary page/URL the tool touched, when there is one. */
+  url?: string;
 }
 
 interface SamplingConfig {
@@ -259,6 +267,128 @@ type PersistedGate =
       options: string[];
       prevText: string;
     };
+
+/** Friendly service names for MCP server slugs. */
+const MCP_SERVICE_NAMES: Record<string, string> = {
+  context7: 'Context7',
+  tavily: 'Tavily',
+  exa: 'Exa',
+  github: 'GitHub',
+  notion: 'Notion',
+  filesystem: 'the filesystem',
+  memory: 'memory',
+  postgres: 'Postgres',
+  slack: 'Slack',
+  fetch: 'the web',
+};
+
+function shortHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url.slice(0, 40);
+  }
+}
+
+/** The italic live-status line: what is happening, in words, with the service
+ *  named when we can (Tavily, Context7, …). */
+function describeActivity(tool: string, args?: Record<string, unknown>): { label: string; service?: string } {
+  const str = (k: string): string | undefined => {
+    const v = args?.[k];
+    return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+  };
+  if (tool === 'web.tavily_search') return { label: 'Searching online — Tavily', service: 'Tavily' };
+  if (tool === 'web.exa_search') return { label: 'Searching online — Exa', service: 'Exa' };
+  if (tool === 'web.fetch') {
+    const u = str('url');
+    return { label: u ? `Reading a web page — ${shortHost(u)}` : 'Reading a web page', service: 'the web' };
+  }
+  if (tool.startsWith('mcp.')) {
+    const slug = tool.split('.')[1] ?? '';
+    const sub = tool.split('.').slice(2).join(' ').replace(/[_-]/g, ' ').trim();
+    const service = MCP_SERVICE_NAMES[slug] ?? slug.replace(/[_-]/g, ' ');
+    return { label: `Using ${service}${sub ? ` — ${sub}` : ''}`, service };
+  }
+  if (tool.startsWith('research.')) return { label: 'Researching — gathering sources', service: 'research' };
+  if (tool === 'project.read') {
+    const rel = str('rel') ?? str('path');
+    return { label: rel ? `Reading a file — ${rel}` : 'Reading a file' };
+  }
+  if (tool === 'project.search' || tool === 'index.search' || tool === 'index_search') {
+    const q = str('query');
+    return { label: q ? `Searching — “${q.slice(0, 60)}”` : 'Searching' };
+  }
+  if (tool === 'project.list') return { label: 'Listing project files' };
+  if (tool === 'terminal.exec') {
+    const cmd = str('command');
+    return { label: cmd ? `Running a command — ${cmd.slice(0, 60)}` : 'Running a command' };
+  }
+  if (tool === 'git.status') return { label: 'Checking git status' };
+  if (tool === 'git.diff') return { label: 'Looking at a diff' };
+  if (tool === 'git.log') return { label: 'Reading the git history' };
+  if (tool === 'git.commit') return { label: 'Committing the staged changes' };
+  if (tool === 'media.generate_image') return { label: 'Generating an image', service: 'media' };
+  if (tool === 'media.generate_video') return { label: 'Generating a video', service: 'media' };
+  if (tool === 'media.speak') return { label: 'Speaking aloud', service: 'voice' };
+  if (tool.startsWith('email.')) return { label: describeTool(tool), service: 'email' };
+  if (tool.startsWith('phone.')) return { label: describeTool(tool), service: 'phone' };
+  if (tool.startsWith('calendar.')) return { label: describeTool(tool), service: 'calendar' };
+  if (tool.startsWith('memory.')) return { label: describeTool(tool), service: 'memory' };
+  if (tool.startsWith('inbox.')) return { label: describeTool(tool), service: 'inbox' };
+  return { label: describeTool(tool) };
+}
+
+/** Keep activity args small enough to persist with the thread. */
+function capArgs(args: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!args) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (typeof v === 'string') out[k] = v.length > 300 ? `${v.slice(0, 300)}…` : v;
+    else if (typeof v === 'number' || typeof v === 'boolean' || v == null) out[k] = v;
+    else {
+      const s = JSON.stringify(v);
+      out[k] = s.length > 300 ? `${s.slice(0, 300)}…` : s;
+    }
+  }
+  return out;
+}
+
+/** Best-effort extraction of the page a tool touched, for the panel's link. */
+function extractUrl(out: unknown): string | undefined {
+  if (!out || typeof out !== 'object') return undefined;
+  const o = out as Record<string, unknown>;
+  const first = (a: unknown): string | undefined => {
+    if (!Array.isArray(a)) return undefined;
+    for (const entry of a) {
+      if (entry && typeof entry === 'object') {
+        const u = (entry as Record<string, unknown>).url ?? (entry as Record<string, unknown>).link;
+        if (typeof u === 'string' && /^https?:\/\//.test(u)) return u;
+      }
+    }
+    return undefined;
+  };
+  const candidates: unknown[] = [
+    o.url,
+    o.link,
+    o.href,
+    (o as Record<string, unknown>).source_url,
+    Array.isArray(o.results) ? first(o.results) : undefined,
+    Array.isArray(o.items) ? first(o.items) : undefined,
+    Array.isArray(o.articles) ? first(o.articles) : undefined,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && /^https?:\/\//.test(c)) return c;
+  }
+  return undefined;
+}
+
+/** Capped result preview for the activity panel. */
+function previewResult(out: unknown): string | undefined {
+  if (out == null) return undefined;
+  const s = typeof out === 'string' ? out : JSON.stringify(out);
+  if (!s || s === 'null') return undefined;
+  return s.length > 1500 ? `${s.slice(0, 1500)}…` : s;
+}
 
 function extractMedia(tool: string, output: unknown): MediaAtt | null {
   if (tool !== 'media.generate_image' && tool !== 'media.generate_video') return null;
@@ -658,6 +788,31 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
     return () => cancelAnimationFrame(id);
   }, [thread]);
 
+  /** The OPEN panel: every tool the agent has used in this thread, live. */
+  const [activityPanel, setActivityPanel] = useState<{ open: boolean; focus?: string }>({ open: false });
+  const allActivities = useMemo(
+    () => thread.flatMap((m) => (m.activity ?? []).map((a) => ({ item: a, ts: m.ts }))).reverse(),
+    [thread],
+  );
+
+  const openExternal = useCallback(
+    async (url: string) => {
+      try {
+        const w = window.open(url, '_blank', 'noopener,noreferrer');
+        if (w) return;
+      } catch {
+        /* fall through to copying the link */
+      }
+      try {
+        await copyToClipboard(url);
+        onToast('Link copied — paste it into your browser');
+      } catch {
+        onToast(url);
+      }
+    },
+    [onToast],
+  );
+
   const toChatMessage = (m: ThreadMsg): ChatMessage => ({
     id: m.id,
     role: m.role,
@@ -703,14 +858,22 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
 
   /** Settle an inline activity chip once its tool result arrives. */
   const settleActivity = useCallback(
-    (callId: string, status: ActivityItem['status'], detail?: string, ms?: number) => {
+    (
+      callId: string,
+      status: ActivityItem['status'],
+      detail?: string,
+      ms?: number,
+      patch?: Partial<ActivityItem>,
+    ) => {
       setThread((prev) =>
         prev.map((m) => {
           if (!m.activity?.some((a) => a.id === callId)) return m;
           return {
             ...m,
             activity: m.activity.map((a) =>
-              a.id === callId ? { ...a, status, detail: detail ?? a.detail, ms: ms ?? a.ms } : a,
+              a.id === callId
+                ? { ...a, status, detail: detail ?? a.detail, ms: ms ?? a.ms, ...(patch ?? {}) }
+                : a,
             ),
           };
         }),
@@ -747,14 +910,17 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
           setToolActive(true);
           setToolCount((n) => n + 1);
           pushTrace('tool_call', e.call.tool, JSON.stringify(e.call.args).slice(0, 500));
-          // Inline activity chip: what the agent is doing, right in the thread.
+          // Inline activity chip + the italic "what is happening" line.
           if (asstIdRef.current) {
             const target = asstIdRef.current;
+            const d = describeActivity(e.call.tool, e.call.args);
             const item: ActivityItem = {
               id: e.callId,
               tool: e.call.tool,
-              label: describeTool(e.call.tool),
+              label: d.label,
+              service: d.service,
               status: 'running',
+              args: capArgs(e.call.args),
             };
             setThread((prev) =>
               prev.map((m) => (m.id === target ? { ...m, activity: [...(m.activity ?? []), item] } : m)),
@@ -771,7 +937,15 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
         case 'tool_result': {
           setToolActive(false);
           const r = e.result;
-          settleActivity(e.callId, r.ok ? 'ok' : 'failed', r.ok ? undefined : (r.error ?? undefined), r.duration_ms);
+          settleActivity(
+            e.callId,
+            r.ok ? 'ok' : 'failed',
+            r.ok ? undefined : (r.error ?? undefined),
+            r.duration_ms,
+            r.ok
+              ? { result: previewResult(r.output), url: extractUrl(r.output) }
+              : undefined,
+          );
           pushTrace('tool_result', `${r.tool} — ${r.ok ? 'ok' : `FAILED [${r.code}]`} (${r.duration_ms}ms)`, r.ok ? undefined : (r.error ?? undefined));
           const media = extractMedia(r.tool, r.ok ? r.output : null);
           const artifact = extractArtifact(r.ok ? r.output : null);
@@ -1177,6 +1351,7 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
         result.ok ? 'ok' : 'failed',
         result.ok ? undefined : (result.error ?? undefined),
         result.duration_ms,
+        result.ok ? { result: previewResult(result.output), url: extractUrl(result.output) } : undefined,
       );
       pushTrace(
         'tool_result',
@@ -1443,7 +1618,10 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
                 <p className="gf-muted">Powered by {modelLabel || 'no model selected'} · tools run in the background, consequential ones ask first.</p>
               </div>
             )}
-            {thread.map((m) => (
+            {thread.map((m) => {
+              const live =
+                m.activity?.find((a) => a.status === 'running') ?? m.activity?.[m.activity.length - 1];
+              return (
               <div key={m.id}>
                 <ChatBubble
                   message={toChatMessage(m)}
@@ -1466,6 +1644,22 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
                   onArtifactSubmit={running ? undefined : handleArtifactSubmit}
                   assistantVariant={
                     isLocalProvider(providers.find((p) => p.id === providerId)) ? 'local' : 'cloud'
+                  }
+                  statusSlot={
+                    m.role === 'assistant' && (m.activity?.length ?? 0) > 0 ? (
+                      <>
+                        <span className="agent-live-status" title={live?.detail ?? live?.tool}>
+                          {live ? `${live.label}${live.status === 'running' ? '…' : ''}` : ''}
+                        </span>
+                        <button
+                          className="agent-open-link"
+                          onClick={() => setActivityPanel({ open: true, focus: live?.id })}
+                          title="What was used, what it searched for, and the page it read"
+                        >
+                          open
+                        </button>
+                      </>
+                    ) : undefined
                   }
                 />
                 {m.role === 'assistant' && (m.activity?.length ?? 0) > 0 && (
@@ -1492,7 +1686,8 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
             <div ref={threadEndRef} />
           </div>
 
@@ -1649,6 +1844,72 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
               </button>
             )}
           </div>
+
+          {/* Tool activity panel: non-modal, so the chat stays visible and the
+              list keeps updating live as new tools run. */}
+          {activityPanel.open && (
+            <div className="agent-activity-panel" role="dialog" aria-label="Tool activity">
+              <div className="agent-activity-head">
+                <strong>Tool activity</strong>
+                <span className="gf-muted" style={{ fontSize: 11 }}>
+                  live — updates as tools run
+                </span>
+                <button className="gf-btn gf-btn-sm" onClick={() => setActivityPanel({ open: false })}>
+                  Close
+                </button>
+              </div>
+              {allActivities.length === 0 && <div className="gf-muted">No tool activity yet.</div>}
+              {allActivities.map(({ item, ts }) => (
+                <div
+                  key={item.id}
+                  className={`agent-activity-entry${item.id === activityPanel.focus ? ' focus' : ''}${
+                    item.status === 'running' ? ' hot' : ''
+                  }`}
+                >
+                  <div className="agent-activity-line">
+                    {item.label}
+                    {item.status === 'running'
+                      ? ' — running…'
+                      : item.status === 'failed'
+                        ? ' — failed'
+                        : item.status === 'blocked'
+                          ? ' — needs approval'
+                          : item.ms != null
+                            ? ` — ${item.ms}ms`
+                            : ''}
+                  </div>
+                  <div className="agent-activity-meta">
+                    {item.tool} · {new Date(ts).toLocaleTimeString()}
+                    {item.service ? ` · ${item.service}` : ''}
+                  </div>
+                  {item.args && Object.keys(item.args).length > 0 && (
+                    <div className="agent-activity-args">
+                      {Object.entries(item.args)
+                        .slice(0, 8)
+                        .map(([k, v]) => (
+                          <div key={k}>
+                            <span className="gf-muted">{k}</span>:{' '}
+                            {String(typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 400)}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                  {item.url && (
+                    <div className="agent-activity-url">
+                      <span className="gf-muted">page</span>
+                      <button className="agent-open-link" onClick={() => void openExternal(item.url!)}>
+                        {item.url.slice(0, 100)}
+                      </button>
+                    </div>
+                  )}
+                  {item.result && <pre className="agent-activity-result">{item.result}</pre>}
+                  {item.detail && !item.result && (
+                    <div className="agent-activity-meta">{item.detail.slice(0, 300)}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {replyTo && (
             <div className="gf-row" style={{ gap: 6, padding: '4px 10px', background: 'var(--gf-panel-2)', borderRadius: 4, marginTop: 4 }}>

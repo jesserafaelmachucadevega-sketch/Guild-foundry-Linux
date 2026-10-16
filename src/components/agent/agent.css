@@ -254,6 +254,110 @@
   background: #d99a2b;
 }
 
+/* The italic "what is happening" line on the actions row, opposite the
+   buttons: dark grey on the light theme, soft grey on the dark one. */
+.agent-live-status {
+  font-style: italic;
+  font-size: 11.5px;
+  color: #9aa4b5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 72%;
+}
+[data-theme='light'] .agent-live-status {
+  color: #4a5160;
+}
+.agent-open-link {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  font-size: 11.5px;
+  color: var(--gf-gold);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.agent-open-link:hover {
+  color: var(--gf-gold-bright);
+}
+
+/* Live tool-activity panel: fixed, non-modal, keeps updating while open. */
+.agent-activity-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 430px;
+  max-width: calc(100vw - 36px);
+  max-height: 62vh;
+  overflow-y: auto;
+  background: var(--gf-panel);
+  border: 1px solid var(--gf-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  padding: 10px 12px;
+  z-index: 60;
+}
+.agent-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.agent-activity-entry {
+  border-top: 1px solid var(--gf-border);
+  padding: 8px 0;
+  font-size: 12px;
+}
+.agent-activity-entry.hot {
+  background: rgba(46, 125, 233, 0.08);
+  border-radius: 6px;
+}
+.agent-activity-entry.focus {
+  border-left: 2px solid var(--gf-gold);
+  padding-left: 8px;
+}
+.agent-activity-line {
+  font-style: italic;
+  color: #9aa4b5;
+  font-size: 12.5px;
+}
+[data-theme='light'] .agent-activity-line {
+  color: #4a5160;
+}
+.agent-activity-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--gf-muted);
+  overflow-wrap: anywhere;
+}
+.agent-activity-args {
+  margin-top: 4px;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.agent-activity-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.agent-activity-result {
+  margin-top: 6px;
+  max-height: 180px;
+  overflow: auto;
+  background: var(--gf-black);
+  border: 1px solid var(--gf-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: var(--gf-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .agent-quick {
   display: flex;
   gap: 6px;
