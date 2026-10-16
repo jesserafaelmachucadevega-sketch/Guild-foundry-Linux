@@ -89,6 +89,20 @@ interface EmailForm {
   from_name: string;
 }
 
+/** Where Google hands out app passwords (2-Step Verification required). */
+const GMAIL_APP_PASSWORD_URL = 'https://myaccount.google.com/apppasswords';
+
+/** Match the address the user typed to a preset, so nobody needs to know what
+ *  an IMAP host is just to read their own mail. */
+function presetForEmail(email: string): string | null {
+  const domain = email.trim().toLowerCase().split('@')[1] ?? '';
+  if (domain === 'gmail.com' || domain === 'googlemail.com') return 'gmail';
+  if (domain === 'outlook.com' || domain === 'hotmail.com' || domain === 'live.com' || domain === 'msn.com') {
+    return 'outlook';
+  }
+  return null;
+}
+
 function EmailCard({ onToast }: { onToast: (msg: string) => void }): React.ReactElement {
   const [presetId, setPresetId] = useState('gmail');
   const [form, setForm] = useState<EmailForm>({
@@ -148,9 +162,26 @@ function EmailCard({ onToast }: { onToast: (msg: string) => void }): React.React
     setTest(null);
   };
 
+  /** Typing an address should not require knowing any server settings: match
+   *  the domain to a preset and let it fill the hosts. */
+  const onEmailChange = (value: string): void => {
+    setForm((f) => ({ ...f, user: value }));
+    const mapped = presetForEmail(value);
+    if (mapped && mapped !== presetId) applyPreset(mapped);
+  };
+
+  const copyAppPasswordLink = async (): Promise<void> => {
+    try {
+      await copyToClipboard(GMAIL_APP_PASSWORD_URL);
+      onToast('Link copied — paste it in your browser: Google Account → Security → App passwords');
+    } catch {
+      onToast(`Could not copy — open ${GMAIL_APP_PASSWORD_URL} in your browser`);
+    }
+  };
+
   const save = async (): Promise<void> => {
     if (!form.user.trim()) {
-      onToast('Enter the email username first');
+      onToast('Enter the email address first');
       return;
     }
     setBusy(true);
@@ -216,25 +247,56 @@ function EmailCard({ onToast }: { onToast: (msg: string) => void }): React.React
       </select>
       <p className="conn-note">{preset.note}</p>
       <label className="gf-label" style={labelStyle}>
-        IMAP host
-        <input className="gf-input" value={form.imap_host} onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))} placeholder="imap.example.com" />
+        Email (full address)
+        <input
+          className="gf-input"
+          value={form.user}
+          onChange={(e) => onEmailChange(e.target.value)}
+          placeholder="you@gmail.com"
+          autoComplete="email"
+        />
       </label>
-      <label className="gf-label" style={labelStyle}>
-        SMTP host
-        <input className="gf-input" value={form.smtp_host} onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.example.com" />
-      </label>
-      <label className="gf-label" style={labelStyle}>
-        Username (full email address)
-        <input className="gf-input" value={form.user} onChange={(e) => setForm((f) => ({ ...f, user: e.target.value }))} placeholder="you@example.com" />
-      </label>
-      <label className="gf-label" style={labelStyle}>
-        From name (optional)
-        <input className="gf-input" value={form.from_name} onChange={(e) => setForm((f) => ({ ...f, from_name: e.target.value }))} placeholder="Jesse" />
-      </label>
+      {presetId === 'gmail' && (
+        <div className="gf-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+          <button className="gf-btn gf-btn-sm" onClick={() => void copyAppPasswordLink()} disabled={busy}>
+            Copy App Password link
+          </button>
+          <span className="conn-note" style={{ margin: 0, opacity: 0.85 }}>
+            myaccount.google.com/apppasswords — needs 2-Step Verification on
+          </span>
+        </div>
+      )}
       <label className="gf-label" style={labelStyle}>
         App password {hasPass ? '(saved — type to replace)' : ''}
-        <input className="gf-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={hasPass ? '••••••••' : 'app password'} />
+        <input
+          className="gf-input"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder={hasPass ? '••••••••' : '16 characters from Google'}
+        />
       </label>
+      {/* The hosts are auto-filled from the provider above — they live behind a
+          summary line so connecting a Gmail account is address + app password. */}
+      <details key={presetId} open={presetId === 'custom'} style={{ marginTop: 8 }}>
+        <summary className="conn-note" style={{ cursor: 'pointer' }}>
+          Server settings: {form.imap_host || 'imap host'}:{form.imap_port} · {form.smtp_host || 'smtp host'}:{form.smtp_port}{' '}
+          ({form.security === 'tls' ? 'TLS' : 'STARTTLS'})
+          {presetId === 'custom' ? ' — required for a custom server' : ' — auto-filled, click to change'}
+        </summary>
+        <label className="gf-label" style={labelStyle}>
+          IMAP host
+          <input className="gf-input" value={form.imap_host} onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))} placeholder="imap.example.com" />
+        </label>
+        <label className="gf-label" style={labelStyle}>
+          SMTP host
+          <input className="gf-input" value={form.smtp_host} onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.example.com" />
+        </label>
+        <label className="gf-label" style={labelStyle}>
+          From name (optional)
+          <input className="gf-input" value={form.from_name} onChange={(e) => setForm((f) => ({ ...f, from_name: e.target.value }))} placeholder="Jesse" />
+        </label>
+      </details>
       <div className="gf-row" style={{ marginTop: 8 }}>
         <button className="gf-btn gf-btn-sm" onClick={() => void save()} disabled={busy}>
           Save
