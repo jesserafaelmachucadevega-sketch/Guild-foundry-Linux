@@ -17,3 +17,4 @@ guild-foundry-ai-data/
 .env
 .env.*
 !.env.example
+foundrylogo.png
