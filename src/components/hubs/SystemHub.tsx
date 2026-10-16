@@ -2,8 +2,20 @@
 // System & Settings hub — overview, tools/registry, security, diagnostics,
 // updates, and appearance in one multi-tab view.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { invoke, isDesktop } from '../../lib/api';
+import {
+  COLOR_TOKENS,
+  FONT_STACKS,
+  TEXT_SECTIONS,
+  applyAppearance,
+  emptyAppearance,
+  loadAppearance,
+  saveAppearance,
+  sectionPreviewStyle,
+  type Appearance,
+  type SectionType,
+} from '../../lib/appearance';
 import type { NavSection } from '../AppShell';
 import type { ThemeMode } from '../SettingsDrawer';
 import { ToolPanel } from '../tools/ToolPanel';
@@ -32,6 +44,31 @@ const BUBBLE_STYLES: { id: BubbleStyle; label: string; hint: string }[] = [
   { id: 'minimal', label: 'Minimal', hint: 'Soft rounded bubble, speaker name as a quiet caption, soft shadow instead of a border.' },
   { id: 'card', label: 'Card', hint: 'Quiet surface block with a speaker-colored side rail (blue cloud, green local, grey you).' },
 ];
+
+/** Three-state toggle: theme default → on → off → theme default. */
+function Tri({
+  value,
+  onChange,
+  labels,
+}: {
+  value?: boolean;
+  onChange: (v?: boolean) => void;
+  labels: [string, string, string];
+}): React.ReactElement {
+  return (
+    <select
+      className="gf-select"
+      style={{ width: 'auto' }}
+      value={value === undefined ? 'd' : value ? 'y' : 'n'}
+      onChange={(e) => onChange(e.target.value === 'd' ? undefined : e.target.value === 'y')}
+      title={labels.join(' / ')}
+    >
+      <option value="d">{labels[0]}</option>
+      <option value="y">{labels[1]}</option>
+      <option value="n">{labels[2]}</option>
+    </select>
+  );
+}
 
 type HubTab = 'overview' | 'registry' | 'security' | 'usage' | 'diagnostics' | 'updates' | 'appearance';
 type RegistryTab = 'tools' | 'connections' | 'mcp';
@@ -116,6 +153,51 @@ function AppearancePanel({ theme, onTheme, bubbleStyle, onBubbleStyle, onNavigat
     }
   };
 
+  // ---- Theme studio: the user's own colours and type, over the base theme ----
+  const [appearance, setAppearance] = useState<Appearance>(emptyAppearance());
+
+  useEffect(() => {
+    void loadAppearance().then((a) => {
+      setAppearance(a);
+      applyAppearance(a);
+    });
+  }, []);
+
+  const updateAppearance = useCallback((next: Appearance) => {
+    setAppearance(next);
+    applyAppearance(next);
+    void saveAppearance(next);
+  }, []);
+
+  const setColor = (key: string, value: string): void => {
+    const colors = { ...appearance.colors };
+    if (value) colors[key] = value;
+    else delete colors[key];
+    updateAppearance({ ...appearance, colors });
+  };
+
+  const setSection = (key: string, patch: Partial<SectionType>): void => {
+    const merged: SectionType = { ...(appearance.sections[key] ?? {}), ...patch };
+    (Object.keys(merged) as (keyof SectionType)[]).forEach((k) => {
+      if (merged[k] === undefined) delete merged[k];
+    });
+    const sections = { ...appearance.sections };
+    if (Object.keys(merged).length === 0) delete sections[key];
+    else sections[key] = merged;
+    updateAppearance({ ...appearance, sections });
+  };
+
+  const clearSection = (key: string): void => {
+    const sections = { ...appearance.sections };
+    delete sections[key];
+    updateAppearance({ ...appearance, sections });
+  };
+
+  const resetAllAppearance = (): void => {
+    if (!window.confirm('Reset every colour and font override back to the theme defaults?')) return;
+    updateAppearance(emptyAppearance());
+  };
+
   return (
     <div className="gf-pane" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
       <span className="gf-label">Appearance (default: Light)</span>
@@ -148,6 +230,154 @@ function AppearancePanel({ theme, onTheme, bubbleStyle, onBubbleStyle, onNavigat
       <p className="gf-muted" style={{ fontSize: 12 }}>
         {BUBBLE_STYLES.find((s) => s.id === bubbleStyle)?.hint ?? ''}
       </p>
+      <hr className="gf-divider" />
+
+      <span className="gf-label">Theme studio — colours (click a swatch for the full picker)</span>
+      <div className="ap-grid">
+        {COLOR_TOKENS.map((t) => {
+          const value = appearance.colors[t.key];
+          const isText =
+            t.key === 'buttonText' || t.key === 'accent' || t.key === 'chatText' || t.key === 'mutedText';
+          const swatch = /^#[0-9a-fA-F]{6}$/.test(value ?? '') ? (value as string) : '#2e7de9';
+          return (
+            <div className="ap-row" key={t.key}>
+              <span className="ap-row-label" title={t.label}>
+                {t.label}
+                {!value && <em className="gf-muted"> · theme default</em>}
+              </span>
+              <span className="ap-sample" style={isText && value ? { color: value } : undefined}>
+                {isText ? t.sample : ''}
+                {!isText && (
+                  <span
+                    className="ap-swatch"
+                    style={{
+                      background: value || 'transparent',
+                      borderColor: value || 'var(--gf-border)',
+                      borderStyle: t.key === 'outline' ? 'dashed' : 'solid',
+                    }}
+                  />
+                )}
+              </span>
+              <input
+                className="ap-color"
+                type="color"
+                value={swatch}
+                onChange={(e) => setColor(t.key, e.target.value)}
+                title="Full colour wheel"
+              />
+              <input
+                className="gf-input ap-hex"
+                value={value ?? ''}
+                placeholder="#rrggbb"
+                onChange={(e) => setColor(t.key, e.target.value.trim())}
+              />
+              <button className="gf-btn gf-btn-sm" onClick={() => setColor(t.key, '')} disabled={!value} title="Back to the theme default">
+                Reset
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <hr className="gf-divider" />
+      <span className="gf-label">Theme studio — fonts</span>
+      <div className="gf-row" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <label className="gf-label" style={{ margin: 0 }}>
+          Base font
+          <select
+            className="gf-select"
+            value={appearance.baseFont ?? 'system'}
+            onChange={(e) =>
+              updateAppearance({ ...appearance, baseFont: e.target.value === 'system' ? undefined : e.target.value })
+            }
+          >
+            {FONT_STACKS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="gf-label" style={{ margin: 0 }}>
+          Base size (px)
+          <input
+            className="gf-input"
+            type="number"
+            min={10}
+            max={22}
+            step={0.5}
+            style={{ width: 92 }}
+            value={appearance.baseSize ?? ''}
+            placeholder="default"
+            onChange={(e) =>
+              updateAppearance({ ...appearance, baseSize: e.target.value ? Number(e.target.value) : undefined })
+            }
+          />
+        </label>
+      </div>
+      <p className="gf-muted" style={{ fontSize: 12 }}>
+        The base font and size apply everywhere; every section below can override them. Forum is bundled, and more
+        open-source families ship with the app — pick per section.
+      </p>
+
+      {TEXT_SECTIONS.map((s) => {
+        const v = appearance.sections[s.key] ?? {};
+        return (
+          <div className="ap-section" key={s.key}>
+            <div className="ap-section-head">
+              <div>
+                <strong>{s.label}</strong>
+                <div className="gf-muted" style={{ fontSize: 11 }}>
+                  {s.note}
+                  {Object.keys(v).length > 0 ? ' · customised' : ''}
+                </div>
+              </div>
+              <button className="gf-btn gf-btn-sm" onClick={() => clearSection(s.key)} disabled={Object.keys(v).length === 0}>
+                Reset
+              </button>
+            </div>
+            <div className="ap-section-preview" style={sectionPreviewStyle(v)}>
+              {s.sample}
+            </div>
+            <div className="gf-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <select
+                className="gf-select"
+                value={v.family ?? 'system'}
+                onChange={(e) => setSection(s.key, { family: e.target.value === 'system' ? undefined : e.target.value })}
+                title="Font family for this section"
+              >
+                {FONT_STACKS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="gf-input"
+                type="number"
+                min={8}
+                max={34}
+                step={0.5}
+                style={{ width: 78 }}
+                value={v.size ?? ''}
+                placeholder="size"
+                onChange={(e) => setSection(s.key, { size: e.target.value ? Number(e.target.value) : undefined })}
+                title="Size in px (blank = theme size)"
+              />
+              <Tri value={v.bold} onChange={(b) => setSection(s.key, { bold: b })} labels={['weight: default', 'bold', 'regular']} />
+              <Tri value={v.italic} onChange={(b) => setSection(s.key, { italic: b })} labels={['style: default', 'italic', 'upright']} />
+              <Tri value={v.strike} onChange={(b) => setSection(s.key, { strike: b })} labels={['strike: default', 'struck through', 'plain']} />
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="gf-row" style={{ marginTop: 12 }}>
+        <button className="gf-btn danger" onClick={resetAllAppearance}>
+          Reset the whole theme
+        </button>
+      </div>
+
       <hr className="gf-divider" />
       <span className="gf-label">Credentials</span>
       <p className="gf-muted" style={{ fontSize: 12 }}>

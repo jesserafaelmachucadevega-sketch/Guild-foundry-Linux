@@ -60,3 +60,69 @@
   color: var(--gf-gold);
   border-color: var(--gf-gold);
 }
+
+/* ---------- Theme studio (Appearance tab) ---------- */
+.ap-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ap-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(120px, 1.4fr) 44px 110px 70px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.ap-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ap-swatch {
+  display: inline-block;
+  width: 100%;
+  height: 18px;
+  border: 2px solid var(--gf-border);
+  border-radius: 4px;
+}
+.ap-sample {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ap-color {
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--gf-border);
+  background: transparent;
+  cursor: pointer;
+}
+.ap-hex {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.ap-section {
+  border-top: 1px solid var(--gf-border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.ap-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ap-section-preview {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--gf-border);
+  border-radius: 8px;
+  background: var(--gf-panel-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

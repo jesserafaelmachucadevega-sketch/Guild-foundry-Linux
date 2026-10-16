@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import './theme.css';
 import './a11y.css';
+import './fonts.css';
+import { applyAppearance, loadAppearance } from './lib/appearance';
 import type { ViewMode } from './lib/types';
 import { AppShell, useToasts, type NavSection } from './components/AppShell';
 import { SettingsDrawer } from './components/SettingsDrawer';
@@ -79,6 +81,12 @@ export default function App(): React.ReactElement {
   useEffect(() => {
     document.documentElement.setAttribute('data-bubbles', bubbleStyle);
   }, [bubbleStyle]);
+
+  // The user's theme overrides (colours + fonts) load once and are applied as
+  // CSS variables; unset values leave the base theme in charge.
+  useEffect(() => {
+    void loadAppearance().then(applyAppearance);
+  }, []);
 
   return (
     <div data-theme={theme} data-bubbles={bubbleStyle} style={{ height: '100%', width: '100%' }}>

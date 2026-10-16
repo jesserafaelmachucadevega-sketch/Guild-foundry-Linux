@@ -916,3 +916,159 @@ body {
   --gf-danger: #c0392b;
   --gf-ok: #3f9e4d;
 }
+
+/* ---------------------------------------------------------------------------
+   User appearance (Settings → Appearance → Theme studio). Every --ap-* is
+   unset unless the user chose it, so the base theme keeps owning every
+   default. This section is LAST on purpose: on equal specificity the user's
+   choice wins.
+   --------------------------------------------------------------------------- */
+
+.gf-app {
+  font-family: var(--ap-font, var(--gf-font, system-ui, sans-serif));
+  font-size: var(--ap-font-size, inherit);
+}
+
+/* Colours */
+.gf-header { background: var(--ap-header-bg, var(--gf-panel)); }
+.gf-nav-rail { background: var(--ap-rail-bg, var(--gf-panel)); }
+.gf-pane { background: var(--ap-pane-bg, var(--gf-black)); }
+.gf-header,
+.gf-nav-rail,
+.gf-pane,
+.gf-drawer,
+.gf-modal,
+.gf-toast,
+.gf-input,
+.gf-textarea,
+.gf-select,
+.gf-btn,
+.gf-icon-btn,
+.gf-bubble,
+.conn-card,
+.agent-gate,
+.agent-activity-panel,
+.mem-entry {
+  border-color: var(--ap-outline, var(--gf-border));
+}
+.gf-btn {
+  background: var(--ap-btn-bg, var(--gf-dark-grey));
+  color: var(--ap-btn-text, var(--gf-offwhite));
+}
+.gf-btn.primary { background: var(--ap-accent, var(--gf-gold)); }
+.gf-btn.primary:hover { background: var(--ap-accent, var(--gf-gold-bright)); }
+.gf-btn:hover { border-color: var(--ap-accent, var(--gf-gold)); }
+.gf-icon-btn:hover { color: var(--ap-accent, var(--gf-gold)); border-color: var(--ap-accent, var(--gf-gold)); }
+.gf-nav-btn.active .gf-nav-label,
+.gf-view-switcher button.active,
+.agent-open-link {
+  color: var(--ap-accent, var(--gf-gold));
+}
+.gf-view-switcher button.active { border-color: var(--ap-accent, var(--gf-gold)); }
+.gf-bubble-body { color: var(--ap-chat-text, currentColor); }
+.gf-muted,
+.gf-nav-detail,
+.agent-activity-meta {
+  color: var(--ap-muted, var(--gf-muted));
+}
+
+/* Text sections — family / size / weight / italic / strike, each independently
+   inherited from the theme until the user changes it. */
+.gf-header .gf-gold-text,
+.gf-header .gf-muted,
+.gf-nav-label,
+.gf-pane-header > span:first-child,
+.gf-label,
+.gf-btn,
+.gf-input,
+.gf-textarea,
+.gf-select,
+.gf-bubble-body,
+.gf-bubble-role,
+.gf-muted,
+.gf-pane strong,
+.conn-card-head strong {
+  font-style: var(--ap-appTitle-style, inherit);
+}
+
+.gf-header .gf-gold-text {
+  font-family: var(--ap-appTitle-family, inherit);
+  font-size: var(--ap-appTitle-size, inherit);
+  font-weight: var(--ap-appTitle-weight, inherit);
+  font-style: var(--ap-appTitle-style, inherit);
+  text-decoration-line: var(--ap-appTitle-deco, none);
+}
+.gf-header .gf-muted {
+  font-family: var(--ap-headerSection-family, inherit);
+  font-size: var(--ap-headerSection-size, inherit);
+  font-weight: var(--ap-headerSection-weight, inherit);
+  font-style: var(--ap-headerSection-style, inherit);
+  text-decoration-line: var(--ap-headerSection-deco, none);
+}
+.gf-nav-label {
+  font-family: var(--ap-railLabel-family, inherit);
+  font-size: var(--ap-railLabel-size, inherit);
+  font-weight: var(--ap-railLabel-weight, inherit);
+  font-style: var(--ap-railLabel-style, inherit);
+  text-decoration-line: var(--ap-railLabel-deco, none);
+}
+.gf-pane-header > span:first-child {
+  font-family: var(--ap-paneTitle-family, inherit);
+  font-size: var(--ap-paneTitle-size, inherit);
+  font-weight: var(--ap-paneTitle-weight, inherit);
+  font-style: var(--ap-paneTitle-style, inherit);
+  text-decoration-line: var(--ap-paneTitle-deco, none);
+}
+.gf-pane strong,
+.conn-card-head strong {
+  font-family: var(--ap-listStrong-family, inherit);
+  font-size: var(--ap-listStrong-size, inherit);
+  font-weight: var(--ap-listStrong-weight, inherit);
+  font-style: var(--ap-listStrong-style, inherit);
+  text-decoration-line: var(--ap-listStrong-deco, none);
+}
+.gf-label {
+  font-family: var(--ap-formLabel-family, inherit);
+  font-size: var(--ap-formLabel-size, inherit);
+  font-weight: var(--ap-formLabel-weight, inherit);
+  font-style: var(--ap-formLabel-style, inherit);
+  text-decoration-line: var(--ap-formLabel-deco, none);
+}
+.gf-btn {
+  font-family: var(--ap-buttons-family, inherit);
+  font-size: var(--ap-buttons-size, inherit);
+  font-weight: var(--ap-buttons-weight, inherit);
+  font-style: var(--ap-buttons-style, inherit);
+  text-decoration-line: var(--ap-buttons-deco, none);
+}
+.gf-input,
+.gf-textarea,
+.gf-select {
+  font-family: var(--ap-inputs-family, var(--gf-font));
+  font-size: var(--ap-inputs-size, inherit);
+  font-weight: var(--ap-inputs-weight, inherit);
+  font-style: var(--ap-inputs-style, inherit);
+  text-decoration-line: var(--ap-inputs-deco, none);
+}
+.gf-bubble-body {
+  font-family: var(--ap-chatText-family, inherit);
+  font-size: var(--ap-chatText-size, var(--ap-font-size, inherit));
+  font-weight: var(--ap-chatText-weight, inherit);
+  font-style: var(--ap-chatText-style, inherit);
+  text-decoration-line: var(--ap-chatText-deco, none);
+}
+.gf-bubble-role {
+  font-family: var(--ap-chatRole-family, inherit);
+  font-size: var(--ap-chatRole-size, inherit);
+  font-weight: var(--ap-chatRole-weight, inherit);
+  font-style: var(--ap-chatRole-style, inherit);
+  text-decoration-line: var(--ap-chatRole-deco, none);
+}
+.gf-muted,
+.gf-nav-detail {
+  font-family: var(--ap-muted-family, inherit);
+  font-size: var(--ap-muted-size, inherit);
+  font-weight: var(--ap-muted-weight, inherit);
+  font-style: var(--ap-muted-style, inherit);
+  text-decoration-line: var(--ap-muted-deco, none);
+}
