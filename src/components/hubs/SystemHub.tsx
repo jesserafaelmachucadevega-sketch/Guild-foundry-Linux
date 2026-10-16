@@ -45,6 +45,32 @@ const BUBBLE_STYLES: { id: BubbleStyle; label: string; hint: string }[] = [
   { id: 'card', label: 'Card', hint: 'Quiet surface block with a speaker-colored side rail (blue cloud, green local, grey you).' },
 ];
 
+/** Keeps one broken panel from blanking a whole tab: it shows the reason instead. */
+class PanelBoundary extends React.Component<{ children: React.ReactNode }, { error: string | null }> {
+  state: { error: string | null } = { error: null };
+
+  static getDerivedStateFromError(err: unknown): { error: string } {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+
+  render(): React.ReactNode {
+    if (this.state.error !== null) {
+      return (
+        <div className="gf-pane" style={{ padding: 16, gap: 8, display: 'flex', flexDirection: 'column' }}>
+          <strong>This tab hit an error</strong>
+          <p className="gf-muted" style={{ fontSize: 12 }}>
+            {this.state.error}
+          </p>
+          <button className="gf-btn gf-btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => this.setState({ error: null })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /** Three-state toggle: theme default → on → off → theme default. */
 function Tri({
   value,
@@ -452,14 +478,16 @@ export function SystemHub(props: Props): React.ReactElement {
           {tab === 'diagnostics' && <DiagnosticsPanel onToast={onToast} />}
           {tab === 'updates' && <UpdaterPanel onToast={onToast} />}
           {tab === 'appearance' && (
-            <AppearancePanel
-              theme={props.theme}
-              onTheme={props.onTheme}
-              bubbleStyle={props.bubbleStyle}
-              onBubbleStyle={props.onBubbleStyle}
-              onNavigate={props.onNavigate}
-              onEditPrompts={props.onEditPrompts}
-            />
+            <PanelBoundary>
+              <AppearancePanel
+                theme={props.theme}
+                onTheme={props.onTheme}
+                bubbleStyle={props.bubbleStyle}
+                onBubbleStyle={props.onBubbleStyle}
+                onNavigate={props.onNavigate}
+                onEditPrompts={props.onEditPrompts}
+              />
+            </PanelBoundary>
           )}
         </div>
       </div>

@@ -91,26 +91,31 @@ function setVar(root: HTMLElement, name: string, value: string): void {
   else root.style.removeProperty(name);
 }
 
-/** Apply (or clear) every override on the document root. */
+/** Apply (or clear) every override on the document root. Never throws: a bad
+ *  override must not be able to take the view down. */
 export function applyAppearance(a: Appearance): void {
-  const root = document.documentElement;
-  setVar(root, '--ap-font', fontCss(a.baseFont));
-  setVar(root, '--ap-font-size', a.baseSize ? `${a.baseSize}px` : '');
-  for (const t of COLOR_TOKENS) {
-    const value = a.colors[t.key] ?? '';
-    // Guard against half-typed hex: an invalid custom property would make the
-    // consuming declaration invalid-at-computed-value-time and flash.
-    const ok =
-      value === '' || /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
-    setVar(root, t.cssVar, ok ? value : '');
-  }
-  for (const s of TEXT_SECTIONS) {
-    const v = a.sections[s.key] ?? {};
-    setVar(root, `--ap-${s.key}-family`, fontCss(v.family));
-    setVar(root, `--ap-${s.key}-size`, v.size ? `${v.size}px` : '');
-    setVar(root, `--ap-${s.key}-weight`, v.bold === undefined ? '' : v.bold ? '700' : '400');
-    setVar(root, `--ap-${s.key}-style`, v.italic === undefined ? '' : v.italic ? 'italic' : 'normal');
-    setVar(root, `--ap-${s.key}-deco`, v.strike === undefined ? '' : v.strike ? 'line-through' : 'none');
+  try {
+    const root = document.documentElement;
+    setVar(root, '--ap-font', fontCss(a.baseFont));
+    setVar(root, '--ap-font-size', a.baseSize ? `${a.baseSize}px` : '');
+    for (const t of COLOR_TOKENS) {
+      const value = a.colors[t.key] ?? '';
+      // Guard against half-typed hex: an invalid custom property would make the
+      // consuming declaration invalid-at-computed-value-time and flash.
+      const ok =
+        value === '' || /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
+      setVar(root, t.cssVar, ok ? value : '');
+    }
+    for (const s of TEXT_SECTIONS) {
+      const v = a.sections[s.key] ?? {};
+      setVar(root, `--ap-${s.key}-family`, fontCss(v.family));
+      setVar(root, `--ap-${s.key}-size`, v.size ? `${v.size}px` : '');
+      setVar(root, `--ap-${s.key}-weight`, v.bold === undefined ? '' : v.bold ? '700' : '400');
+      setVar(root, `--ap-${s.key}-style`, v.italic === undefined ? '' : v.italic ? 'italic' : 'normal');
+      setVar(root, `--ap-${s.key}-deco`, v.strike === undefined ? '' : v.strike ? 'line-through' : 'none');
+    }
+  } catch {
+    // The theme stays exactly as it was.
   }
 }
 
