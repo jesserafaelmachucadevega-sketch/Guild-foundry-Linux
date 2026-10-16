@@ -11,6 +11,7 @@ export type ProviderKind =
   | 'openrouter'
   | 'ollama'
   | 'gguf'
+  | 'command-code'
   | 'custom';
 
 export type PricingVerified = 'free' | 'paid' | 'unknown';

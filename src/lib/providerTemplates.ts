@@ -139,6 +139,16 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     'Azure OpenAI API key',
     'Replace YOUR-RESOURCE with your Azure resource name. New v1 route: {endpoint}/openai/v1. Key in Azure portal → Keys and Endpoint.',
   ),
+  // --- Coding agents driven through a local CLI (no endpoint) ---
+  t(
+    'command-code',
+    'Command Code (coding only)',
+    'command-code',
+    '',
+    '',
+    '',
+    'Coding only. Runs the Command Code CLI headlessly (`cmd -p`) on this machine: every request loads a full coding-agent context — measured 14,834 input tokens for a one-word answer. Excellent for real coding work, expensive for chat. Sign in once by running `cmd` in a terminal. Answers arrive in one piece, not word by word. Leave the model blank to use your Command Code default.',
+  ),
   // --- Local model providers (Phase 16) ---
   t(
     'jan',

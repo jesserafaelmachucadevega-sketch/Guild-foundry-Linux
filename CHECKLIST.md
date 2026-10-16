@@ -153,3 +153,15 @@ Status: implemented + verified at the layer level (typecheck, vite build, IPC 16
 - [x] Native Google Calendar OAuth — authorization code + PKCE + loopback redirect, refresh token in the OS keychain, tools `calendar.gcal_list/gcal_events/gcal_create`, Connections card. (Outlook: still via MCP connectors — a Microsoft app registration would be the equivalent next step)
 - [ ] Hands-on acceptance run — script in docs/ACCEPTANCE-RUN.md; requires the user (only remaining verification layer)
 
+## PHASE 17 — Command Code CLI provider, coding only (2026-10-16)
+
+Status: built and unit-tested; awaiting the user's first live run in the UI.
+
+- [x] New provider kind `command-code` (`src-tauri/src/commandcode.rs`) — one headless run per request: `cmd -p "<prompt>" --output-format json --skip-onboarding [-m <model>]`, spawned without a shell, both pipes drained on their own threads, 10-minute hard deadline, child killed on expiry, cancellation kills the child mid-run
+- [x] NDJSON parsing — the final `result` frame supplies `finalText`, `usage.inputTokens/outputTokens`, `durationMs`, `stopReason`; `subtype: error` fails loudly, `max_turns` is returned as an explicitly-marked partial answer (never presented as whole), unknown frame types ignored on purpose
+- [x] Real usage into the ledger — the CLI's own token counts go through `record_tokens` + `cost::record` exactly like an HTTP provider's, so `/usage` is never quietly wrong
+- [x] Catalog from `cmd --list-models` — Connect (`Check CLI`) reports the binary version and refreshes the model list; the parser was validated against a real 126-line capture, including ids with no vendor prefix (`claude-sonnet-4-6`) and the footer prose being ignored
+- [x] Coding-only warning in the UI — on the provider card (`CODING ONLY` badge + note) and in the add/edit form, with the measured number: 14,834 input tokens for a one-word reply (measured on this machine). Also states that answers arrive in one piece and that the CLI must be signed in
+- [x] Honest limits recorded — no token-by-token streaming (the CLI prints its answer once at the end); the CLI's own file writes and shell commands stay denied (no `--yolo`), so this provider is a brain: the app's own tool loop does the file work
+- [x] Tests — `parse_models`, `parse_run`, exit-code → sentence mapping; a gated test for a real `--list-models` capture (`CC_MODELS_FIXTURE=… cargo test commandcode::tests::parses_a_real_capture -- --ignored`); a live headless round-trip test marked `#[ignore]` because it costs a real request
+

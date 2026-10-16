@@ -13,6 +13,7 @@
 
 mod agents;
 mod build;
+mod commandcode;
 mod cost;
 mod db;
 mod diagnostics;

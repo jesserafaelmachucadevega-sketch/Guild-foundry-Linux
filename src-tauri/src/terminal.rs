@@ -153,7 +153,7 @@ const BLOCKED_ENV_VARS: &[&str] = &[
     "DYLD_FALLBACK_LIBRARY_PATH",
 ];
 
-fn sanitized_env() -> Vec<(String, String)> {
+pub(crate) fn sanitized_env() -> Vec<(String, String)> {
     std::env::vars()
         .filter(|(k, _)| !BLOCKED_ENV_VARS.contains(&k.as_str()))
         .collect()

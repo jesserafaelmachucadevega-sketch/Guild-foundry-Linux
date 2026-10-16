@@ -26,6 +26,7 @@ const KINDS: { id: ProviderKind; label: string; baseHint: string; needsKey: bool
   { id: 'google', label: 'Google AI', baseHint: 'https://generativelanguage.googleapis.com/v1beta', needsKey: true },
   { id: 'openrouter', label: 'OpenRouter', baseHint: 'https://openrouter.ai/api/v1', needsKey: true },
   { id: 'ollama', label: 'Local (Ollama-style)', baseHint: 'http://localhost:11434', needsKey: false },
+  { id: 'command-code', label: 'Command Code (coding only)', baseHint: '—', needsKey: false },
   { id: 'custom', label: 'Custom endpoint', baseHint: 'https://your-host/v1', needsKey: true },
 ];
 
@@ -37,8 +38,15 @@ const MODELS_PATH_HINT: Record<ProviderKind, string> = {
   openrouter: '/models',
   ollama: '/api/tags',
   gguf: '—',
+  'command-code': '—',
   custom: '/models',
 };
+
+/** The honest warning for the CLI provider, in the form and on the card. */
+const CLI_WARNING =
+  'Coding only. Command Code runs a full coding agent for every request — measured: 14,834 input tokens for a one-word answer. Excellent for real coding work; chatting here will drain your plan quickly. Answers arrive in one piece (no live typing), and the CLI must be signed in (run `cmd` once in a terminal). Leave the model blank to use your Command Code default.';
+const CLI_CARD_NOTE =
+  'Coding only — each request sends a full coding-agent context (~15k input tokens minimum). Chatting here drains your Command Code plan fast.';
 
 interface Props {
   onToast: (text: string) => void;
@@ -165,6 +173,14 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
     setForm((f) => {
       if (!f) return f;
       const next: FormState = { ...f, kind };
+      if (kind === 'command-code') {
+        // The CLI kind has no endpoint at all: clear URL/path/key so nothing
+        // stale is submitted or rendered.
+        next.base_url = '';
+        next.models_path = '';
+        next.api_key = '';
+        return next;
+      }
       // Auto-fill the V1 base URL + models path when the user switches kind
       // on a fresh (unsaved) form so they never submit a blank endpoint.
       if (!f.id && (!f.base_url.trim() || KINDS.some((k) => k.baseHint === f.base_url))) {
@@ -272,7 +288,7 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
       onToast('Provider name is required');
       return;
     }
-    if (!form.base_url.trim()) {
+    if (!isCliKind && !form.base_url.trim()) {
       onToast('V1 endpoint URL is required');
       return;
     }
@@ -284,8 +300,10 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
         id: form.id ?? editingSavedId ?? undefined,
         name: form.name.trim(),
         kind: form.kind,
-        base_url: form.base_url.trim(),
-        models_path: form.models_path.trim() || '/models',
+        // The CLI kind has no endpoint or models path — the Rust side stores a
+        // scheme-only marker so the row stays well-formed.
+        base_url: isCliKind ? undefined : form.base_url.trim(),
+        models_path: isCliKind ? undefined : form.models_path.trim() || '/models',
         api_key: form.api_key || undefined,
       });
       const keySent = Boolean(form.api_key);
@@ -324,6 +342,7 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
   }
 
   const kindMeta = KINDS.find((k) => k.id === form?.kind);
+  const isCliKind = form?.kind === 'command-code';
   const handshakePreview = form ? `${form.base_url.replace(/\/$/, '')}${form.models_path || '/models'}` : '';
   const activeTemplateHelp = selectedTemplate?.help
     ?? PROVIDER_TEMPLATES.find((tpl) => tpl.name === form?.name)?.help;
@@ -397,34 +416,40 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="gf-label" htmlFor="pf-models-path">Models path</label>
-                <input
-                  id="pf-models-path"
-                  className="gf-input"
-                  value={form.models_path}
-                  onChange={(e) => setForm({ ...form, models_path: e.target.value })}
-                  placeholder={form ? MODELS_PATH_HINT[form.kind] : '/models'}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="gf-label" htmlFor="pf-base">V1 endpoint URL (base URL)</label>
-              <input
-                id="pf-base"
-                className="gf-input"
-                value={form.base_url}
-                onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-                placeholder={kindMeta?.baseHint ?? 'https://'}
-                inputMode="url"
-                autoComplete="off"
-              />
-              {handshakePreview && (
-                <div className="gf-form-hint" style={{ marginTop: 4 }}>
-                  Handshake URL: <span style={{ fontFamily: 'var(--gf-mono)' }}>{handshakePreview}</span>
+              {!isCliKind && (
+                <div>
+                  <label className="gf-label" htmlFor="pf-models-path">Models path</label>
+                  <input
+                    id="pf-models-path"
+                    className="gf-input"
+                    value={form.models_path}
+                    onChange={(e) => setForm({ ...form, models_path: e.target.value })}
+                    placeholder={form ? MODELS_PATH_HINT[form.kind] : '/models'}
+                  />
                 </div>
               )}
             </div>
+            {isCliKind ? (
+              <div className="gf-keyring-note gf-note-warn">{CLI_WARNING}</div>
+            ) : (
+              <div>
+                <label className="gf-label" htmlFor="pf-base">V1 endpoint URL (base URL)</label>
+                <input
+                  id="pf-base"
+                  className="gf-input"
+                  value={form.base_url}
+                  onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                  placeholder={kindMeta?.baseHint ?? 'https://'}
+                  inputMode="url"
+                  autoComplete="off"
+                />
+                {handshakePreview && (
+                  <div className="gf-form-hint" style={{ marginTop: 4 }}>
+                    Handshake URL: <span style={{ fontFamily: 'var(--gf-mono)' }}>{handshakePreview}</span>
+                  </div>
+                )}
+              </div>
+            )}
             {(!kindMeta || kindMeta.needsKey) && (
               <div>
                 <label className="gf-label" htmlFor="pf-key">API key</label>
@@ -508,6 +533,7 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
             <div className="gf-provider-card-top">
               <span className="gf-provider-name">{p.name}</span>
               <span className="gf-kind-chip">{kindLabel(p.kind)}</span>
+              {p.kind === 'command-code' && <span className="gf-badge warn">CODING ONLY</span>}
               {p.status === 'connected' && <span className="gf-badge ok">CONNECTED</span>}
               {p.status === 'error' && (
                 <span className="gf-badge err">ERROR{errCode ? ` [${errCode}]` : ''}</span>
@@ -515,9 +541,15 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
               {p.status === 'idle' && <span className="gf-badge idle">IDLE</span>}
               {busy === p.id && <span className="gf-spin">working…</span>}
             </div>
-            <span className="gf-provider-url">{p.base_url}</span>
+            {p.kind !== 'command-code' && <span className="gf-provider-url">{p.base_url}</span>}
             <div className="gf-provider-meta">
-              <span>{p.has_key ? 'Key stored in keyring' : 'No key stored'}</span>
+              <span>
+                {p.kind === 'command-code'
+                  ? 'No key needed — uses your Command Code sign-in'
+                  : p.has_key
+                    ? 'Key stored in keyring'
+                    : 'No key stored'}
+              </span>
               {p.last_check_at != null && (
                 <span>
                   Last check:{' '}
@@ -525,6 +557,9 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
                 </span>
               )}
             </div>
+            {p.kind === 'command-code' && (
+              <div className="gf-keyring-note gf-note-warn">{CLI_CARD_NOTE}</div>
+            )}
             {report && !report.ok && (
               <div className="gf-err-detail">
                 <div>
@@ -545,7 +580,7 @@ export function ProvidersPanel({ onToast }: Props): React.ReactElement {
                 disabled={busy !== null}
                 onClick={() => void handleConnect(p)}
               >
-                Connect
+                {p.kind === 'command-code' ? 'Check CLI' : 'Connect'}
               </button>
               <button
                 className="gf-btn"

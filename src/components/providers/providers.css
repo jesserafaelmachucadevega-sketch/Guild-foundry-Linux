@@ -127,8 +127,15 @@
 .gf-keyring-note {
   font-size: 12px;
   color: var(--gf-tan-dim);
-  border: 1px dashed var(--gf-border-strong);
+  border: 1px dashed var(--gf-border);
   padding: 8px 10px;
+}
+
+/* Honest caution (CLI providers): same box as the keyring note, louder border. */
+.gf-note-warn {
+  border-color: var(--gf-gold);
+  color: var(--gf-offwhite);
+  margin-top: 8px;
 }
 
 .gf-pwa-notice {

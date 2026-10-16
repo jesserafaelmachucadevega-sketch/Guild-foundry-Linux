@@ -252,6 +252,7 @@ const KNOWN_KINDS: &[&str] = &[
     "openrouter",
     "ollama",
     "gguf",
+    "command-code",
     "custom",
 ];
 
@@ -262,6 +263,7 @@ fn default_base_url(kind: &str) -> &'static str {
         "google" => "https://generativelanguage.googleapis.com/v1beta",
         "openrouter" => "https://openrouter.ai/api/v1",
         "ollama" => "http://localhost:11434",
+        "command-code" => crate::commandcode::BASE_URL,
         _ => "",
     }
 }
@@ -270,6 +272,7 @@ fn default_models_path(kind: &str) -> &'static str {
     match kind {
         "anthropic" => "/v1/models",
         "ollama" => "/api/tags",
+        "command-code" => "",
         _ => "/models",
     }
 }
@@ -549,20 +552,29 @@ pub fn provider_upsert(
         return Err("provider name is required".to_string());
     }
     let mut base_url = base_url.unwrap_or_default().trim().to_string();
-    if base_url.is_empty() {
-        base_url = default_base_url(&kind).to_string();
-    }
-    if base_url.is_empty() {
-        return Err("base_url is required for this provider kind".to_string());
-    }
-    reqwest::Url::parse(&base_url)
-        .map_err(|e| format!("invalid base_url '{}': {}", base_url, e))?;
     let mut models_path = models_path.unwrap_or_default().trim().to_string();
-    if models_path.is_empty() {
-        models_path = default_models_path(&kind).to_string();
-    }
-    if !models_path.starts_with('/') {
-        models_path = format!("/{}", models_path);
+
+    if kind == crate::commandcode::PROVIDER_KIND {
+        // CLI-backed kind: there is no endpoint to poll, so URL and models-path
+        // rules do not apply. `base_url` keeps a scheme-only marker so the row
+        // stays well-formed for the shared provider UI.
+        base_url = default_base_url(&kind).to_string();
+        models_path = String::new();
+    } else {
+        if base_url.is_empty() {
+            base_url = default_base_url(&kind).to_string();
+        }
+        if base_url.is_empty() {
+            return Err("base_url is required for this provider kind".to_string());
+        }
+        reqwest::Url::parse(&base_url)
+            .map_err(|e| format!("invalid base_url '{}': {}", base_url, e))?;
+        if models_path.is_empty() {
+            models_path = default_models_path(&kind).to_string();
+        }
+        if !models_path.starts_with('/') {
+            models_path = format!("/{}", models_path);
+        }
     }
 
     let id = match id {
@@ -780,6 +792,51 @@ pub async fn provider_handshake(
                 structured_output: false,
             }),
         });
+    }
+
+    // Command Code CLI: no endpoint — verify the binary and refresh its catalog.
+    if cfg.kind == crate::commandcode::PROVIDER_KIND {
+        let version =
+            crate::commandcode::version().unwrap_or_else(|| "Command Code CLI".to_string());
+        return match sync_commandcode_models(&app, &cfg) {
+            Ok(n) => {
+                let _ = mark_status(&app, &cfg, true, None);
+                Ok(HandshakeReport {
+                    provider_id: cfg.id,
+                    ok: true,
+                    http_status: None,
+                    raw_code: "CLI".to_string(),
+                    layman: "Ready (Command Code CLI)".to_string(),
+                    detail: format!(
+                        "{} · {} model{} listed. Coding only: every request sends a full coding-agent context (~15k input tokens minimum).",
+                        version,
+                        n,
+                        if n == 1 { "" } else { "s" }
+                    ),
+                    latency_ms: started.elapsed().as_millis() as u64,
+                    models_found: n,
+                    capabilities: Some(Capabilities {
+                        tool_calling: true,
+                        vision: false,
+                        structured_output: false,
+                    }),
+                })
+            }
+            Err(e) => {
+                let _ = mark_status(&app, &cfg, false, Some("CLI"));
+                Ok(HandshakeReport {
+                    provider_id: cfg.id,
+                    ok: false,
+                    http_status: None,
+                    raw_code: "CLI".to_string(),
+                    layman: "Command Code CLI not ready".to_string(),
+                    detail: e,
+                    latency_ms: started.elapsed().as_millis() as u64,
+                    models_found: 0,
+                    capabilities: None,
+                })
+            }
+        };
     }
 
     // Step 1: validate configuration before any network use.
@@ -1036,6 +1093,38 @@ fn store_models(
     Ok(())
 }
 
+/// Refresh a CLI provider's catalog from `cmd --list-models`. The CLI knows
+/// which models the signed-in account can actually use, so it is the source of
+/// truth — nothing is invented here.
+fn sync_commandcode_models(app: &tauri::AppHandle, cfg: &ProviderCfg) -> Result<usize, String> {
+    let models = crate::commandcode::list_models()?;
+    let raw: Vec<RawModel> = models
+        .into_iter()
+        .map(|(id, desc)| {
+            let name = if desc.is_empty() {
+                id.clone()
+            } else {
+                format!("{} — {}", id, desc)
+            };
+            RawModel {
+                id,
+                name,
+                context_length: None,
+                pricing: "unknown",
+                // Command Code drives tools itself; in this app the model still
+                // produces tool calls that our own loop executes.
+                tools: true,
+                vision: false,
+                reasoning: false,
+                structured: false,
+            }
+        })
+        .collect();
+    let n = raw.len();
+    store_models(app, cfg, &raw)?;
+    Ok(n)
+}
+
 fn row_to_model_info(
     id: String,
     model_id: String,
@@ -1071,6 +1160,8 @@ pub fn provider_list_models(
     let cfg = load_provider(&app, &provider_id)?;
     if cfg.kind == "gguf" {
         let _ = crate::gguf::sync_models(&app);
+    } else if cfg.kind == crate::commandcode::PROVIDER_KIND {
+        let _ = sync_commandcode_models(&app, &cfg);
     }
     let conn = open_db(&app)?;
     let mut stmt = conn
@@ -1187,6 +1278,61 @@ fn chat_messages_with_system(messages: &[ChatMsg], params: &ChatParams) -> Vec<(
         _ => out.insert(0, ("system".to_string(), comms_contract_owned())),
     }
     out
+}
+
+/// Flatten a conversation into the single prompt a headless Command Code run
+/// takes. The CLI brings its own coding-agent system prompt; ours travels as
+/// leading context, so the communication contract still governs the answer.
+fn commandcode_prompt(messages: &[ChatMsg], params: &ChatParams) -> String {
+    let mut out = String::new();
+    for (role, content) in chat_messages_with_system(messages, params) {
+        let body = content.trim();
+        if body.is_empty() {
+            continue;
+        }
+        match role.as_str() {
+            "system" => {
+                out.push_str(body);
+                out.push_str("\n\n---\n\n");
+            }
+            "assistant" => {
+                out.push_str("Assistant: ");
+                out.push_str(body);
+                out.push_str("\n\n");
+            }
+            _ => {
+                out.push_str("User: ");
+                out.push_str(body);
+                out.push_str("\n\n");
+            }
+        }
+    }
+    out.push_str("Answer the final user message above.");
+    out
+}
+
+/// Command Code answers in one piece. A turn-limited run is marked as partial
+/// so a truncated answer is never presented as if it were whole.
+fn commandcode_text(run: &crate::commandcode::HeadlessRun) -> String {
+    if run.partial {
+        format!(
+            "⚠ Command Code stopped at its turn limit, so this is a partial answer:\n\n{}",
+            run.text
+        )
+    } else {
+        run.text.clone()
+    }
+}
+
+/// `Some(model)` only when one is actually chosen — a blank selection means
+/// "use whatever model the user configured for Command Code".
+fn commandcode_model(model_id: &str) -> Option<String> {
+    let m = model_id.trim();
+    if m.is_empty() {
+        None
+    } else {
+        Some(m.to_string())
+    }
 }
 
 struct ChatTarget {
@@ -1621,6 +1767,31 @@ pub async fn provider_chat_complete(
         });
     }
 
+    // Command Code CLI: one blocking headless run. The answer arrives whole at
+    // the end — there is no token stream to relay — and its real usage numbers
+    // go into the ledger exactly like any HTTP provider's.
+    if cfg.kind == crate::commandcode::PROVIDER_KIND {
+        let prompt = commandcode_prompt(&messages, &params);
+        let model = commandcode_model(&model_id);
+        let run = tauri::async_runtime::spawn_blocking(move || {
+            crate::commandcode::run_headless(&prompt, model.as_deref(), None)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        record_tokens(run.prompt_tokens, run.completion_tokens);
+        crate::cost::record(
+            &app,
+            &provider_id,
+            &model_id,
+            run.prompt_tokens,
+            run.completion_tokens,
+        );
+        return Ok(CompleteResult {
+            content: commandcode_text(&run),
+            latency_ms: started.elapsed().as_millis() as u64,
+        });
+    }
+
     let key = crate::secrets::keyring_get(&provider_key_name(&cfg.id));
     let target = build_chat_target(&cfg, key.as_deref(), &model_id, &messages, &params, false)?;
     let resp = tokio::time::timeout(Duration::from_secs(180), send_chat(&target).send())
@@ -1815,6 +1986,53 @@ async fn run_stream(
             crate::cost::record(&app, &cfg.id, model_id, *pt, *ct);
         }
         return result.map(|_| ());
+    }
+
+    // Command Code CLI: one blocking headless run on the blocking pool. The
+    // answer is emitted as a single delta, then the stream closes carrying the
+    // CLI's real token counts. Cancelling kills the child process.
+    if cfg.kind == crate::commandcode::PROVIDER_KIND {
+        let prompt = commandcode_prompt(messages, params);
+        let model = commandcode_model(model_id);
+        let cancel_flag = cancel.clone();
+        let run = tauri::async_runtime::spawn_blocking(move || {
+            crate::commandcode::run_headless(&prompt, model.as_deref(), Some(&cancel_flag))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        record_tokens(run.prompt_tokens, run.completion_tokens);
+        crate::cost::record(
+            &app,
+            &cfg.id,
+            model_id,
+            run.prompt_tokens,
+            run.completion_tokens,
+        );
+        emit_chunk(
+            &app,
+            &ChunkPayload {
+                stream_id: stream_id.to_string(),
+                delta: Some(commandcode_text(&run)),
+                done: None,
+                error: None,
+                latency_ms: None,
+                prompt_tokens: None,
+                completion_tokens: None,
+            },
+        );
+        emit_chunk(
+            &app,
+            &ChunkPayload {
+                stream_id: stream_id.to_string(),
+                delta: None,
+                done: Some(true),
+                error: None,
+                latency_ms: Some(started.elapsed().as_millis() as u64),
+                prompt_tokens: Some(run.prompt_tokens),
+                completion_tokens: Some(run.completion_tokens),
+            },
+        );
+        return Ok(());
     }
     let key = crate::secrets::keyring_get(&provider_key_name(&cfg.id));
     let target = build_chat_target(cfg, key.as_deref(), model_id, messages, params, true)?;

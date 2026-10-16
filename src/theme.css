@@ -689,6 +689,7 @@ body {
 }
 .gf-badge.ok { color: var(--gf-ok); border-color: var(--gf-ok); }
 .gf-badge.err { color: var(--gf-danger); border-color: var(--gf-danger); }
+.gf-badge.warn { color: var(--gf-gold); border-color: var(--gf-gold); }
 .gf-badge.idle { color: var(--gf-muted); }
 
 /* ---------- Drawer ---------- */
