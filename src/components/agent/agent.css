@@ -187,6 +187,73 @@
   font-family: var(--gf-mono);
 }
 
+/* Pinned gate above the message box — unmissable by construction. */
+.agent-gate {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 6px 8px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--gf-gold);
+  border-radius: 12px;
+  background: var(--gf-panel-2);
+}
+.agent-gate-line {
+  margin-top: 4px;
+  font-size: 13.5px;
+}
+.agent-gate-arg {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--gf-offwhite);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-status-line {
+  padding: 4px 12px 0 12px;
+  font-size: 12px;
+  color: var(--gf-muted);
+}
+
+/* Inline activity chips: what the agent is doing, right under its reply. */
+.agent-activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 10px 0 10px;
+}
+.agent-activity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border: 1px solid var(--gf-border);
+  border-radius: 999px;
+  background: var(--gf-panel-2);
+  color: var(--gf-muted);
+}
+.agent-activity-chip .act-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gf-muted);
+}
+.agent-activity-chip.act-running .act-dot {
+  background: var(--gf-gold);
+  animation: gf-pulse 1.2s ease-in-out infinite;
+}
+.agent-activity-chip.act-ok .act-dot {
+  background: #08a04b;
+}
+.agent-activity-chip.act-failed .act-dot {
+  background: #e5534b;
+}
+.agent-activity-chip.act-blocked .act-dot {
+  background: #d99a2b;
+}
+
 .agent-quick {
   display: flex;
   gap: 6px;

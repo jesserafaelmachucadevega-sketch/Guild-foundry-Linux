@@ -115,6 +115,19 @@ interface ThreadMsg {
   attachText?: string;
   /** Emoji reactions on this message. */
   reactions?: Record<string, number>;
+  /** Live tool activity for this turn — rendered inline as chips and saved
+   *  with the thread, so what the agent did stays visible. */
+  activity?: ActivityItem[];
+}
+
+/** One inline activity chip (a tool the agent ran during a turn). */
+interface ActivityItem {
+  id: string;
+  tool: string;
+  label: string;
+  status: 'running' | 'ok' | 'failed' | 'blocked';
+  detail?: string;
+  ms?: number;
 }
 
 interface SamplingConfig {
@@ -133,11 +146,13 @@ interface TraceEntry {
 
 interface PendingGate {
   call: ToolCall;
+  callId: string;
   prevText: string;
 }
 
 interface PendingQuestion {
   call: ToolCall;
+  callId: string;
   question: string;
   options: string[];
   prevText: string;
@@ -176,6 +191,74 @@ function stripToolFences(text: string): string {
   // just this app's fenced format (see lib/sanitize.ts).
   return stripMachineSyntax(text);
 }
+
+/** Read-only tools: auto-approved while the user keeps that default on.
+ *  Writes, commands, and anything that spends money always ask. */
+const READ_TOOLS = new Set<string>([
+  'project.read',
+  'project.list',
+  'project.search',
+  'project.tree',
+  'index.search',
+  'index_search',
+  'git.status',
+  'git.diff',
+  'git.log',
+  'web.fetch',
+  'memory.search',
+  'memory.get',
+  'inbox.fetch',
+  'email.list',
+  'email.read',
+  'calendar.list_events',
+  'document.extract_text',
+]);
+
+/** Plain-language phrasing for the approval card — no raw JSON, no tool ids. */
+function describeTool(tool: string): string {
+  const map: Record<string, string> = {
+    'project.read': 'read a file in this project',
+    'project.list': 'list files in this project',
+    'project.search': 'search this project',
+    'project.write': 'write a file in this project',
+    'project.create_file': 'create a file in this project',
+    'project.delete': 'delete a file in this project',
+    'terminal.exec': 'run a command in the terminal',
+    'git.status': 'check git status',
+    'git.diff': 'look at a diff',
+    'git.log': 'read the git history',
+    'git.commit': 'commit the staged changes',
+    'web.fetch': 'fetch a web page',
+    'email.send': 'send an email',
+    'email.list': 'review your inbox',
+    'email.read': 'read an email',
+    'inbox.fetch': 'check your inbox and texts',
+    'media.generate_image': 'generate an image',
+    'media.generate_video': 'generate a video',
+    'media.speak': 'speak text aloud',
+    'phone.sms_send': 'send a text message',
+    'phone.call_start': 'place a phone call',
+    'memory.put': 'store something in memory',
+    'calendar.create_event': 'create a calendar event',
+  };
+  return map[tool] ?? `use the “${tool}” tool`;
+}
+
+/** Pending decisions survive tab switches and restarts. The tool loop has
+ *  already ended when a gate fires, so an in-memory-only prompt can strand the
+ *  conversation forever — which is exactly what happened in practice. */
+const GATE_SETTINGS_KEY = 'agent.pending_gate';
+type PersistedGate =
+  | { kind: 'approval'; agentId: string; call: ToolCall; callId: string; prevText: string }
+  | {
+      kind: 'question';
+      agentId: string;
+      call: ToolCall;
+      callId: string;
+      question: string;
+      options: string[];
+      prevText: string;
+    };
 
 function extractMedia(tool: string, output: unknown): MediaAtt | null {
   if (tool !== 'media.generate_image' && tool !== 'media.generate_video') return null;
@@ -329,6 +412,48 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
   const [toolActive, setToolActive] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingGate | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  /** Read-only tools are auto-approved by default (writes/commands/money
+   *  always ask). Toggle lives in the agent settings. */
+  const [autoAllowReads, setAutoAllowReads] = useState(true);
+
+  useEffect(() => {
+    void invoke<boolean | null>('settings_get', { key: 'agent.auto_allow_reads' })
+      .then((v) => {
+        if (typeof v === 'boolean') setAutoAllowReads(v);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Restore a decision that was still pending when this surface unmounted
+  // (switching tabs or restarting destroys in-memory state; the loop already
+  // ended, so the gate must come back or the conversation is stranded).
+  useEffect(() => {
+    if (!isDesktop()) return;
+    void invoke<PersistedGate | null>('settings_get', { key: GATE_SETTINGS_KEY })
+      .then((g) => {
+        if (!g || g.agentId !== agentId) return;
+        setRunning(false);
+        setToolActive(false);
+        if (g.kind === 'approval') {
+          setPendingApproval({ call: g.call, callId: g.callId, prevText: g.prevText });
+        } else {
+          setPendingQuestion({
+            call: g.call,
+            callId: g.callId,
+            question: g.question,
+            options: g.options ?? [],
+            prevText: g.prevText,
+            answer: '',
+          });
+        }
+        setTrace((prev) => [
+          ...prev,
+          { id: `tr-${Date.now()}`, kind: 'gate', label: 'Restored a pending decision', ts: Date.now() },
+        ]);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId]);
   const [toolCount, setToolCount] = useState(0);
   const [sessionId, setSessionId] = useState(() => newId('agent'));
   const [suggestToken, setSuggestToken] = useState(0);
@@ -552,6 +677,24 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
     [providerId, modelId, sessionId, transcript, pushTrace],
   );
 
+  /** Settle an inline activity chip once its tool result arrives. */
+  const settleActivity = useCallback(
+    (callId: string, status: ActivityItem['status'], detail?: string, ms?: number) => {
+      setThread((prev) =>
+        prev.map((m) => {
+          if (!m.activity?.some((a) => a.id === callId)) return m;
+          return {
+            ...m,
+            activity: m.activity.map((a) =>
+              a.id === callId ? { ...a, status, detail: detail ?? a.detail, ms: ms ?? a.ms } : a,
+            ),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
   const handleEvent = useCallback(
     (e: ToolLoopEvent) => {
       switch (e.type) {
@@ -580,6 +723,19 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
           setToolActive(true);
           setToolCount((n) => n + 1);
           pushTrace('tool_call', e.call.tool, JSON.stringify(e.call.args).slice(0, 500));
+          // Inline activity chip: what the agent is doing, right in the thread.
+          if (asstIdRef.current) {
+            const target = asstIdRef.current;
+            const item: ActivityItem = {
+              id: e.callId,
+              tool: e.call.tool,
+              label: describeTool(e.call.tool),
+              status: 'running',
+            };
+            setThread((prev) =>
+              prev.map((m) => (m.id === target ? { ...m, activity: [...(m.activity ?? []), item] } : m)),
+            );
+          }
           if ((e.call.tool === 'media.generate_image' || e.call.tool === 'media.generate_video') && asstIdRef.current) {
             const id = asstIdRef.current;
             const kind: 'image' | 'video' = e.call.tool === 'media.generate_video' ? 'video' : 'image';
@@ -591,6 +747,7 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
         case 'tool_result': {
           setToolActive(false);
           const r = e.result;
+          settleActivity(e.callId, r.ok ? 'ok' : 'failed', r.ok ? undefined : (r.error ?? undefined), r.duration_ms);
           pushTrace('tool_result', `${r.tool} — ${r.ok ? 'ok' : `FAILED [${r.code}]`} (${r.duration_ms}ms)`, r.ok ? undefined : (r.error ?? undefined));
           const media = extractMedia(r.tool, r.ok ? r.output : null);
           const artifact = extractArtifact(r.ok ? r.output : null);
@@ -616,7 +773,27 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
           }
           if (r.needs_approval) {
             const call = callArgsRef.current.get(e.callId);
-            if (call) setPendingApproval({ call, prevText: asstFullRef.current });
+            settleActivity(e.callId, 'blocked', r.error ?? 'waiting for your approval');
+            if (call) {
+              if (autoAllowReads && READ_TOOLS.has(call.tool)) {
+                // Reads run without interrupting the flow; visible in the trace
+                // and the inline chip, and switchable in the agent settings.
+                pushTrace(
+                  'gate',
+                  `Auto-approved read: ${call.tool}`,
+                  'Read-only tools are auto-approved — turn this off in the agent settings',
+                );
+                approveGateRef.current?.(call, e.callId, true);
+              } else {
+                const gate: PendingGate = { call, callId: e.callId, prevText: asstFullRef.current };
+                setPendingApproval(gate);
+                void invoke('settings_set', {
+                  key: GATE_SETTINGS_KEY,
+                  value: { kind: 'approval', agentId, ...gate },
+                }).catch(() => undefined);
+                onToast(`Approval needed — ${describeTool(call.tool)} (waiting above the message box)`);
+              }
+            }
           }
           if (r.needs_user) {
             const call = callArgsRef.current.get(e.callId);
@@ -632,7 +809,22 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
             } catch {
               /* keep defaults */
             }
-            if (call) setPendingQuestion({ call, question, options, prevText: asstFullRef.current, answer: '' });
+            if (call) {
+              const gate: PendingQuestion = {
+                call,
+                callId: e.callId,
+                question,
+                options,
+                prevText: asstFullRef.current,
+                answer: '',
+              };
+              setPendingQuestion(gate);
+              void invoke('settings_set', {
+                key: GATE_SETTINGS_KEY,
+                value: { kind: 'question', agentId, ...gate },
+              }).catch(() => undefined);
+              onToast(question);
+            }
           }
           break;
         }
@@ -652,7 +844,7 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
           break;
       }
     },
-    [finishTurn, pushTrace],
+    [finishTurn, pushTrace, settleActivity, autoAllowReads],
   );
 
   /** Token-budgeted transcript for model context — model-agnostic by design. */
@@ -902,88 +1094,152 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
     [startLoop],
   );
 
-  const approvePending = useCallback(async () => {
+  /** Approve one gate: temporarily allow the tool's domain, re-execute the
+   *  exact call, then restore the previous level. Deny never touches
+   *  permissions — it resumes with the denial in context instead. */
+  const approveGate = useCallback(
+    async (call: ToolCall, callId: string, viaAuto = false) => {
+      void invoke('settings_set', { key: GATE_SETTINGS_KEY, value: null }).catch(() => undefined);
+      settleActivity(callId, 'running');
+      const domain =
+        toolDomains[call.tool] ??
+        (call.tool.includes('.') && !call.tool.startsWith('media.') && !call.tool.startsWith('user.')
+          ? 'mcp'
+          : 'shell');
+      let prevLevel = 'ask_every_time';
+      try {
+        const cur = await invoke<string>('perm_get', { domain });
+        if (typeof cur === 'string' && cur) prevLevel = cur;
+      } catch {
+        /* default stands */
+      }
+      try {
+        await invoke('perm_set', { domain, level: 'always_allow' });
+      } catch (e) {
+        settleActivity(callId, 'failed', 'could not open the permission gate');
+        onToast(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      let result: ToolExecResult;
+      try {
+        result = await invoke<ToolExecResult>('tool_execute', {
+          tool: call.tool,
+          args_json: JSON.stringify(call.args),
+          agent_id: agentId,
+          session_id: sessionId,
+        });
+      } catch (e) {
+        result = {
+          ok: false,
+          output: null,
+          error: e instanceof Error ? e.message : String(e),
+          duration_ms: 0,
+          needs_approval: false,
+          needs_user: false,
+          tool: call.tool,
+          code: 'exec_error',
+          executed_at: new Date().toISOString(),
+        };
+      }
+      try {
+        await invoke('perm_set', { domain, level: prevLevel });
+      } catch {
+        /* restored on next gate; non-fatal */
+      }
+      settleActivity(
+        callId,
+        result.ok ? 'ok' : 'failed',
+        result.ok ? undefined : (result.error ?? undefined),
+        result.duration_ms,
+      );
+      pushTrace(
+        'tool_result',
+        `${call.tool} — ${viaAuto ? 'auto-approved read' : 'approved'}, executed (${result.duration_ms}ms)`,
+        result.ok ? undefined : (result.error ?? undefined),
+      );
+      const media = extractMedia(call.tool, result.ok ? result.output : null);
+      const artifact = extractArtifact(result.ok ? result.output : null);
+      if ((media || artifact) && asstIdRef.current) {
+        const id = asstIdRef.current;
+        setThread((prev) =>
+          prev.map((m) =>
+            m.id === id
+              ? {
+                  ...m,
+                  media: media ? [...m.media, media] : m.media,
+                  artifacts: artifact ? [...m.artifacts, artifact] : m.artifacts,
+                }
+              : m,
+          ),
+        );
+      }
+      resumeLoop(
+        `You ${viaAuto ? 'auto-' : ''}approved and executed ${call.tool}. TOOL RESULT [${call.tool}]:\n${JSON.stringify(result)}`,
+      );
+    },
+    [toolDomains, sessionId, agentId, onToast, pushTrace, resumeLoop, settleActivity],
+  );
+
+  const approvePending = useCallback(() => {
     if (!pendingApproval) return;
-    const { call } = pendingApproval;
+    const { call, callId } = pendingApproval;
     setPendingApproval(null);
-    // Approve-once: flip the tool's domain to always_allow, re-execute the
-    // exact gated call, then restore the previous level. Deny never touches
-    // permissions — it resumes with the denial in context instead.
-    const domain = toolDomains[call.tool] ?? (call.tool.includes('.') && !call.tool.startsWith('media.') && !call.tool.startsWith('user.') ? 'mcp' : 'shell');
-    let prevLevel = 'ask_every_time';
+    void approveGate(call, callId);
+  }, [pendingApproval, approveGate]);
+
+  /** handleEvent runs before approveGate is created; route through a ref so
+   *  the auto-approve path can call it without a hook-order hazard. */
+  const approveGateRef = useRef<typeof approveGate | null>(null);
+  useEffect(() => {
+    approveGateRef.current = approveGate;
+  }, [approveGate]);
+
+  /** One-click durable grant: "always allow this tool" via the temporal
+   *  permission system (revocable in the Permission Center), then run it. */
+  const allowAlways = useCallback(async () => {
+    if (!pendingApproval) return;
+    const { call, callId } = pendingApproval;
+    const domain =
+      toolDomains[call.tool] ??
+      (call.tool.includes('.') && !call.tool.startsWith('media.') && !call.tool.startsWith('user.')
+        ? 'mcp'
+        : 'shell');
     try {
-      const cur = await invoke<string>('perm_get', { domain });
-      if (typeof cur === 'string' && cur) prevLevel = cur;
-    } catch {
-      /* default stands */
-    }
-    try {
-      await invoke('perm_set', { domain, level: 'always_allow' });
+      await invoke('perm_grant', {
+        domain,
+        tool: call.tool,
+        level: 'always_allow',
+        duration: 'forever',
+        metadata: null,
+      });
+      pushTrace('gate', `Granted “${call.tool}” permanently`, 'Revoke any time in the Permission Center');
     } catch (e) {
-      onToast(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast(`Could not grant: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    let result: ToolExecResult;
-    try {
-      result = await invoke<ToolExecResult>('tool_execute', {
-        tool: call.tool,
-        args_json: JSON.stringify(call.args),
-        agent_id: 'agent-harness',
-        session_id: sessionId,
-      });
-    } catch (e) {
-      result = {
-        ok: false,
-        output: null,
-        error: e instanceof Error ? e.message : String(e),
-        duration_ms: 0,
-        needs_approval: false,
-        needs_user: false,
-        tool: call.tool,
-        code: 'exec_error',
-        executed_at: new Date().toISOString(),
-      };
-    }
-    try {
-      await invoke('perm_set', { domain, level: prevLevel });
-    } catch {
-      /* restored on next gate; non-fatal */
-    }
-    pushTrace('tool_result', `${call.tool} — approved, executed (${result.duration_ms}ms)`, result.ok ? undefined : (result.error ?? undefined));
-    const media = extractMedia(call.tool, result.ok ? result.output : null);
-    const artifact = extractArtifact(result.ok ? result.output : null);
-    if ((media || artifact) && asstIdRef.current) {
-      const id = asstIdRef.current;
-      setThread((prev) =>
-        prev.map((m) =>
-          m.id === id
-            ? {
-                ...m,
-                media: media ? [...m.media, media] : m.media,
-                artifacts: artifact ? [...m.artifacts, artifact] : m.artifacts,
-              }
-            : m,
-        ),
-      );
-    }
-    resumeLoop(`You approved and executed ${call.tool}. TOOL RESULT [${call.tool}]:\n${JSON.stringify(result)}`);
-  }, [pendingApproval, toolDomains, sessionId, onToast, pushTrace, resumeLoop]);
+    setPendingApproval(null);
+    void approveGate(call, callId);
+  }, [pendingApproval, toolDomains, approveGate, pushTrace, onToast]);
 
   const denyPending = useCallback(() => {
     if (!pendingApproval) return;
-    const { call } = pendingApproval;
+    const { call, callId } = pendingApproval;
     setPendingApproval(null);
+    void invoke('settings_set', { key: GATE_SETTINGS_KEY, value: null }).catch(() => undefined);
+    settleActivity(callId, 'failed', 'denied by you');
     pushTrace('gate', `Denied ${call.tool} by user`);
     resumeLoop(`The user DENIED the pending ${call.tool} call. Do not retry it — work around it or explain what you need instead.`);
-  }, [pendingApproval, pushTrace, resumeLoop]);
+  }, [pendingApproval, pushTrace, resumeLoop, settleActivity]);
 
   const answerPending = useCallback(() => {
     if (!pendingQuestion || !pendingQuestion.answer.trim()) return;
-    const { call, answer } = pendingQuestion;
+    const { call, callId, answer } = pendingQuestion;
     setPendingQuestion(null);
+    void invoke('settings_set', { key: GATE_SETTINGS_KEY, value: null }).catch(() => undefined);
+    settleActivity(callId, 'ok', 'answered');
     pushTrace('info', `Answered ${call.tool}`, answer.slice(0, 200));
     resumeLoop(`ANSWER [${call.tool}]: ${answer.trim()}`);
-  }, [pendingQuestion, pushTrace, resumeLoop]);
+  }, [pendingQuestion, pushTrace, resumeLoop, settleActivity]);
 
   const stop = useCallback(() => {
     cancelRef.current?.();
@@ -1115,6 +1371,22 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
                     Reset to default
                   </button>
                 </div>
+                <label className="gf-row" style={{ gap: 8, marginTop: 8, alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoAllowReads}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setAutoAllowReads(next);
+                      void invoke('settings_set', { key: 'agent.auto_allow_reads', value: next }).catch(
+                        () => undefined,
+                      );
+                    }}
+                  />
+                  <span className="gf-muted conn-small" style={{ fontSize: 12 }}>
+                    Auto-approve read-only tools (writes, commands, and anything that spends money always ask)
+                  </span>
+                </label>
               </div>
               <div className="agent-settings-col">
                 <AvatarPicker onToast={onToast} />
@@ -1170,6 +1442,22 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
                     isLocalProvider(providers.find((p) => p.id === providerId)) ? 'local' : 'cloud'
                   }
                 />
+                {m.role === 'assistant' && (m.activity?.length ?? 0) > 0 && (
+                  <div className="agent-activity" aria-label="Agent activity">
+                    {m.activity!.map((a) => (
+                      <span
+                        key={a.id}
+                        className={`agent-activity-chip act-${a.status}`}
+                        title={a.detail ?? a.tool}
+                      >
+                        <span className="act-dot" aria-hidden="true" />
+                        {a.label}
+                        {a.status === 'ok' && a.ms ? ` · ${a.ms}ms` : ''}
+                        {a.status === 'blocked' ? ' · needs approval' : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {m.media.length > 0 && (
                   <div className="agent-media-row">
                     {m.media.map((md, i) => (
@@ -1205,25 +1493,76 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
             </div>
           )}
 
+          {/* Gate cards moved out of the scroll area — they are pinned above
+              the message box so a pending decision can never be scrolled out
+              of view or lost to a remount. */}
+
+          <div className="agent-quick" aria-label="Quick actions">
+            {QUICK_SEND.map((q) => (
+              <button key={q.label} className="gf-btn gf-btn-sm" disabled={running || !providerId} onClick={() => send(q.prompt)}>
+                {q.label}
+              </button>
+            ))}
+            {QUICK_INSERT.map((q) => (
+              <button key={q.label} className="gf-btn gf-btn-sm" disabled={running} onClick={() => setInput(q.starter)}>
+                {q.label}…
+              </button>
+            ))}
+          </div>
+
+          <SuggestedList conversationId={sessionId} onRun={(prompt) => send(prompt)} refreshToken={suggestToken} />
+
+          {/* Gate cards live OUTSIDE the scroll container, pinned above the
+              message box, so a pending decision can never be scrolled out of
+              view or missed. */}
+          {(running || pendingApproval || pendingQuestion) && (
+            <div className="agent-status-line" role="status">
+              {pendingApproval
+                ? 'Waiting for your approval'
+                : pendingQuestion
+                  ? 'Waiting for your answer'
+                  : toolActive
+                    ? 'Working — using tools'
+                    : 'Working…'}
+            </div>
+          )}
+
           {pendingApproval && (
-            <div className="agent-approval" role="alertdialog" aria-label="Tool approval">
-              <div>
-                <strong>Approval needed: {pendingApproval.call.tool}</strong>
-                <pre>{JSON.stringify(pendingApproval.call.args, null, 2).slice(0, 600)}</pre>
+            <div className="agent-gate" role="alertdialog" aria-label="Tool approval">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>Approval needed</strong>
+                <div className="agent-gate-line">
+                  Your assistant wants to {describeTool(pendingApproval.call.tool)}.
+                </div>
+                {Object.entries(pendingApproval.call.args ?? {})
+                  .slice(0, 6)
+                  .map(([k, v]) => (
+                    <div key={k} className="agent-gate-arg">
+                      <span className="gf-muted">{k}</span>{' '}
+                      {String(typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 200)}
+                    </div>
+                  ))}
               </div>
-              <div className="gf-row" style={{ gap: 8 }}>
+              <div className="gf-row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <button className="gf-btn danger" onClick={denyPending}>
                   Deny
                 </button>
+                <button
+                  className="gf-btn"
+                  onClick={() => void allowAlways()}
+                  title="Grant this tool permanently — revoke any time in the Permission Center"
+                >
+                  Always allow
+                </button>
                 <button className="gf-btn primary" onClick={() => void approvePending()}>
-                  Approve & run
+                  Approve &amp; run
                 </button>
               </div>
             </div>
           )}
 
           {pendingQuestion && (
-            <div className="agent-approval" role="alertdialog" aria-label="Agent question">
+            <div className="agent-gate" role="alertdialog" aria-label="Agent question">
               <div style={{ flex: 1 }}>
                 <strong>{pendingQuestion.question}</strong>
                 {pendingQuestion.options.length > 0 && (
@@ -1253,21 +1592,6 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
               </div>
             </div>
           )}
-
-          <div className="agent-quick" aria-label="Quick actions">
-            {QUICK_SEND.map((q) => (
-              <button key={q.label} className="gf-btn gf-btn-sm" disabled={running || !providerId} onClick={() => send(q.prompt)}>
-                {q.label}
-              </button>
-            ))}
-            {QUICK_INSERT.map((q) => (
-              <button key={q.label} className="gf-btn gf-btn-sm" disabled={running} onClick={() => setInput(q.starter)}>
-                {q.label}…
-              </button>
-            ))}
-          </div>
-
-          <SuggestedList conversationId={sessionId} onRun={(prompt) => send(prompt)} refreshToken={suggestToken} />
 
           <div className="agent-inputrow">
             <button
