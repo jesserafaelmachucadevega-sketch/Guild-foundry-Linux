@@ -179,16 +179,35 @@ fn map_status(service: &str, http: u16, body: &str, ok_detail: String) -> Integr
     }
 }
 
+/// Build a JSON POST. `.json()` sets `Content-Type: application/json` itself,
+/// and reqwest APPENDS explicit headers — passing one again produces a request
+/// with the header twice, which strict servers reject outright (Context7's MCP
+/// endpoint answers 415 "Content-Type must be application/json"). So any
+/// caller-supplied Content-Type is dropped here rather than duplicated.
+fn post_json_request(
+    url: &str,
+    headers: &[(&str, &str)],
+    body: &serde_json::Value,
+) -> reqwest::RequestBuilder {
+    let mut req = http().post(url).json(body);
+    for (k, v) in headers {
+        if k.eq_ignore_ascii_case("content-type") {
+            continue;
+        }
+        req = req.header(*k, *v);
+    }
+    req
+}
+
 async fn post_json(
     url: &str,
     headers: &[(&str, &str)],
     body: serde_json::Value,
 ) -> Result<(u16, String), String> {
-    let mut req = http().post(url).json(&body);
-    for (k, v) in headers {
-        req = req.header(*k, *v);
-    }
-    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let resp = post_json_request(url, headers, &body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let code = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
     Ok((code, text))
@@ -245,12 +264,13 @@ pub async fn integration_handshake(
             }
             "context7" => {
                 // Context7's native protocol is MCP over Streamable HTTP; a
-                // minimal JSON-RPC initialize doubles as the key check
-                // (bad keys get 401, good keys get a 200 session response).
+                // minimal JSON-RPC initialize proves the endpoint answers.
+                // Measured behaviour: initialize succeeds even with a bogus
+                // key, so this probe cannot vouch for the key — the wording
+                // below says so instead of claiming "key accepted".
                 let (code, body) = post_json(
                     "https://mcp.context7.com/mcp",
                     &[
-                        ("Content-Type", "application/json"),
                         ("Accept", "application/json, text/event-stream"),
                         ("CONTEXT7_API_KEY", &key),
                     ],
@@ -266,7 +286,17 @@ pub async fn integration_handshake(
                     }),
                 )
                 .await?;
-                Ok(map_status(&svc, code, &body, "Context7 key accepted — docs lookup is ready.".to_string()))
+                if (200..300).contains(&code) {
+                    return Ok(status(
+                        &svc,
+                        true,
+                        Some(code),
+                        &code.to_string(),
+                        "Endpoint reachable",
+                        "Context7's MCP endpoint answered. This probe does not validate the key — Context7 checks it on the first real docs query, so a typo only shows up then.".to_string(),
+                    ));
+                }
+                Ok(map_status(&svc, code, &body, String::new()))
             }
             "github" => {
                 let (code, body) = get(
@@ -544,5 +574,65 @@ async fn hf_whoami_async() -> Result<serde_json::Value, String> {
         }
     }
     Ok(serde_json::Value::Object(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Offline guard for the Context7 415: `.json()` sets Content-Type and
+    /// reqwest appends, so a caller-supplied one would send the header twice
+    /// and strict servers reject the request. The builder drops it instead.
+    #[test]
+    fn json_post_sets_content_type_exactly_once() {
+        let req = post_json_request(
+            "https://example.invalid/mcp",
+            &[
+                ("Content-Type", "application/json"),
+                ("Accept", "application/json, text/event-stream"),
+                ("CONTEXT7_API_KEY", "k"),
+            ],
+            &serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" }),
+        )
+        .build()
+        .expect("request builds");
+        let count = req
+            .headers()
+            .get_all(reqwest::header::CONTENT_TYPE)
+            .iter()
+            .count();
+        assert_eq!(count, 1, "a duplicated Content-Type gets a 415 from strict servers");
+        assert_eq!(
+            req.headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("application/json")
+        );
+        // Everything else the caller asked for still travels.
+        assert!(req.headers().get(reqwest::header::ACCEPT).is_some());
+        assert_eq!(
+            req.headers()
+                .get("CONTEXT7_API_KEY")
+                .and_then(|v| v.to_str().ok()),
+            Some("k")
+        );
+    }
+
+    /// Live probe through our own handshake path. Context7's initialize does
+    /// not check the key (verified: a bogus key still gets 200), so a dummy key
+    /// proves the request shape reaches the endpoint:
+    /// `cargo test integrations::tests::live_context7_probe -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_context7_probe_reaches_the_endpoint() {
+        let st = tauri::async_runtime::block_on(integration_handshake(
+            "context7".to_string(),
+            Some("dummy-key".to_string()),
+        ))
+        .expect("handshake returns a report");
+        println!("{} · {} — {}", st.raw_code, st.layman, st.detail);
+        assert!(st.ok, "expected the Context7 endpoint to answer: {:?}", st);
+        assert_eq!(st.http_status, Some(200));
+    }
 }
 

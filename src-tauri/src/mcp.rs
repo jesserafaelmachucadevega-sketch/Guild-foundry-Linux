@@ -722,7 +722,30 @@ impl McpClient {
             req = req.bearer_auth(t);
         }
         for (k, v) in &self.headers {
+            // `.json()` already sets Content-Type, and reqwest APPENDS headers,
+            // so a second copy makes strict servers reject the call outright
+            // (Context7 answers 415 "Content-Type must be application/json").
+            // Custom headers are honoured for everything except this one.
+            if k.eq_ignore_ascii_case("content-type") {
+                continue;
+            }
             req = req.header(k.as_str(), v.as_str());
+        }
+        req
+    }
+
+    /// POST one JSON-RPC payload to the streamable endpoint: accepts both
+    /// response shapes, applies auth and the session header, and lets `.json()`
+    /// set Content-Type exactly once.
+    fn post_rpc(&self, url: &str, payload: &Value) -> reqwest::RequestBuilder {
+        let req = self
+            .http
+            .post(url)
+            .header("Accept", "application/json, text/event-stream")
+            .json(payload);
+        let mut req = self.apply_auth(req);
+        if let Some(s) = &self.session_id {
+            req = req.header("Mcp-Session-Id", s);
         }
         req
     }
@@ -768,17 +791,11 @@ impl McpClient {
         if self.transport == "sse" {
             self.rpc_legacy_sse(&payload, 0, false).await?;
         } else {
-            let mut req = self
-                .http
-                .post(&self.url)
-                .header("Accept", "application/json, text/event-stream")
-                .header("Content-Type", "application/json")
-                .json(&payload);
-            req = self.apply_auth(req);
-            if let Some(s) = &self.session_id {
-                req = req.header("Mcp-Session-Id", s);
-            }
-            let resp = req.send().await.map_err(|e| e.to_string())?;
+            let resp = self
+                .post_rpc(&self.url, &payload)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
             if !resp.status().is_success() && resp.status().as_u16() != 202 {
                 return Err(format!("MCP notify failed: HTTP {}", resp.status()));
             }
@@ -788,17 +805,11 @@ impl McpClient {
 
     /// Streamable HTTP: single POST; response is JSON or an SSE stream.
     async fn rpc_streamable(&mut self, payload: &Value, want_id: u64) -> Result<Value, String> {
-        let mut req = self
-            .http
-            .post(&self.url)
-            .header("Accept", "application/json, text/event-stream")
-            .header("Content-Type", "application/json")
-            .json(payload);
-        req = self.apply_auth(req);
-        if let Some(s) = &self.session_id {
-            req = req.header("Mcp-Session-Id", s);
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .post_rpc(&self.url, payload)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
         let status = resp.status();
         if let Some(s) = resp
             .headers()
@@ -874,13 +885,10 @@ impl McpClient {
             return Err("MCP server sent an empty endpoint".to_string());
         }
         let endpoint_url = resolve_url(&self.url, &endpoint)?;
-        // 2. POST the JSON-RPC message.
-        let mut preq = self
-            .http
-            .post(&endpoint_url)
-            .header("Content-Type", "application/json")
-            .json(payload);
-        preq = self.apply_auth(preq);
+        // 2. POST the JSON-RPC message. `.json()` sets Content-Type once;
+        //    setting it again would send the header twice (servers 415 on that).
+        let preq = self.http.post(&endpoint_url).json(payload);
+        let preq = self.apply_auth(preq);
         let presp = preq.send().await.map_err(|e| e.to_string())?;
         if !presp.status().is_success() && presp.status().as_u16() != 202 {
             let status = presp.status();
@@ -2336,6 +2344,48 @@ pub async fn perm_list(app: tauri::AppHandle) -> Result<Vec<PermEntry>, String> 
             level: perm_get_effective_level(&conn, "", "*", d),
         })
         .collect())
+}
+
+#[cfg(test)]
+mod http_header_tests {
+    use super::*;
+
+    /// reqwest APPENDS headers, and `.json()` already sets Content-Type — so
+    /// setting it a second time sends the header twice and strict MCP servers
+    /// answer 415 ("Content-Type must be application/json", Context7's own
+    /// text, reproduced against the live endpoint). This locks in that our
+    /// streamable POST carries exactly one, even when a saved custom header
+    /// tries to add another.
+    #[test]
+    fn streamable_post_sends_one_content_type() {
+        let client = McpClient::new(
+            "https://example.invalid/mcp".to_string(),
+            "streamable_http".to_string(),
+            Some("token".to_string()),
+            vec![("Content-Type".to_string(), "application/json".to_string())],
+        )
+        .expect("client builds");
+        let req = client
+            .post_rpc(
+                &client.url,
+                &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" }),
+            )
+            .build()
+            .expect("request builds");
+        let count = req
+            .headers()
+            .get_all(reqwest::header::CONTENT_TYPE)
+            .iter()
+            .count();
+        assert_eq!(count, 1, "a duplicated Content-Type gets a 415 from strict servers");
+        assert_eq!(
+            req.headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("application/json")
+        );
+        assert!(req.headers().get(reqwest::header::ACCEPT).is_some());
+    }
 }
 
 #[cfg(test)]
