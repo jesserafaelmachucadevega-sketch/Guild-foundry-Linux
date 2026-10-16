@@ -17,6 +17,7 @@ mod commandcode;
 mod cost;
 mod db;
 mod diagnostics;
+mod downloads;
 mod git;
 mod gguf;
 mod harness;
@@ -224,6 +225,9 @@ fn main() {
             tools::tool_execute,
             // Phase 15 — external API integrations
             integrations::integration_handshake,
+            downloads::model_hardware,
+            downloads::model_catalog,
+            downloads::model_discover,
             integrations::document::document_extract_upload,
             integrations::document::upload_save_b64,
             integrations::email::email_test_connection,

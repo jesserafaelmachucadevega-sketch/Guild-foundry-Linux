@@ -175,3 +175,17 @@ Root cause, reproduced against the live endpoint: reqwest **appends** headers an
 - [x] Tests — offline guards asserting exactly one Content-Type header in both modules, plus a live probe through our own handshake (`cargo test integrations::tests::live_context7_probe -- --ignored`) which returns **200 · Endpoint reachable**
 - [x] Full Rust suite green: 48 passed, 0 failed, 3 ignored (the three that cost real requests/credits)
 
+## PHASE 18 — Model Download (2026-10-16)
+
+Named plainly on purpose: no jargon, no "cookbook". This is the feature that
+means the app never ships an LLM — it finds a model the machine can actually
+run, and (next slice) fetches it. GGUF-first, because inference here is
+in-process through llama.cpp: every suggestion is one file `gguf_load` can open.
+
+- [x] Hardware probe (`model_hardware`) — `nvidia-smi` per-GPU free/total/used/utilization (the same query a trusted reference implementation uses), AMD VRAM read from `/sys/class/drm` sysfs with no vendor tool, RAM from `/proc/meminfo`, and a one-sentence verdict computed from the catalog: "13.2 GB free VRAM on NVIDIA GeForce RTX 4090 — that comfortably runs Qwen3 14B (14 at Q4_K_M, 8.8 GB)"
+- [x] Curated shortlist (`model_catalog`) — 10 GGUF models (Qwen3 0.6B/1.7B/4B/8B/14B, Gemma 3 1B, Llama 3.2 3B, Mistral 7B v0.3, Qwen2.5 Coder 7B, Nomic Embed v1.5) with params, quant, exact size, context, license and an honest note; each row reports `fits` and `headroom_mb` against this machine
+- [x] Honest sourcing — every entry was verified live against the HuggingFace API (repo exists, not gated, exact filename present, exact byte size). Two candidates were dropped because the API returned 401 (gated) rather than being listed as if they worked. Re-runnable: `cargo test downloads::tests::live_curated_entries_exist -- --ignored`
+- [x] Discover (`model_discover`) — HuggingFace trending GGUF search on demand, gated repos flagged, defensive parsing (missing fields never drop a row); live test included
+- [x] Tests — nvidia CSV parsing (junk lines skipped), meminfo parsing in MB, headroom/fit arithmetic, verdict picking the largest model that genuinely fits, catalog completeness, HF payload parsing
+- [ ] **Next slice:** the downloader itself — resumable fetch with progress events into the model folder, size verification, cancel; then the "Model Download" panel (hardware card, fit-filtered list, one-click get → load)
+
