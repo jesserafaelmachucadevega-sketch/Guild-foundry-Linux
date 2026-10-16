@@ -615,24 +615,48 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
       .catch(() => setSampling({}));
   }, [desktop, providerId]);
 
+  /** Stick-to-bottom: the thread follows the stream unless the user has
+   *  deliberately scrolled up to read something. */
+  const stickRef = useRef(true);
+
+  const stickToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const container = threadContainerRef.current;
+    if (!container) return;
+    stickRef.current = true;
+    setShowScrollBottom(false);
+    container.scrollTo({ top: container.scrollHeight, behavior });
+  }, []);
+
   useEffect(() => {
     const container = threadContainerRef.current;
     if (!container) return;
+    // A freshly mounted (or tab-switched) thread starts at its newest point.
+    container.scrollTop = container.scrollHeight;
+    stickRef.current = true;
+    setShowScrollBottom(false);
     const onScroll = () => {
-      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 20;
-      setShowScrollBottom(!isAtBottom);
+      const atBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 40;
+      stickRef.current = atBottom;
+      setShowScrollBottom(!atBottom);
     };
-    onScroll();
-    container.addEventListener('scroll', onScroll);
+    container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
   }, [tab]);
 
-  const scrollKey =
-    thread.length + (thread.length > 0 ? Math.floor(thread[thread.length - 1].text.length / 240) : 0);
+  // Follow every thread mutation — streaming deltas, activity chips, new
+  // messages — on the next frame so content laid out this tick is included.
+  // Direct scrollTop assignment (never scrollIntoView) keeps the motion inside
+  // this container and cannot fight a queued smooth animation. The old version
+  // only re-ran every ~240 characters, so short replies never followed and
+  // long ones jumped.
   useEffect(() => {
-    if (showScrollBottom) return; // user scrolled up — do not yank them back
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [scrollKey, showScrollBottom]);
+    if (!stickRef.current) return;
+    const id = requestAnimationFrame(() => {
+      const container = threadContainerRef.current;
+      if (container && stickRef.current) container.scrollTop = container.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [thread]);
 
   const toChatMessage = (m: ThreadMsg): ChatMessage => ({
     id: m.id,
@@ -937,9 +961,11 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
       const prefix = replyTo ? `↳ Re: ${replyTo.text.slice(0, 200)}\n\n` : '';
       const replyId = replyTo?.id;
       setReplyTo(null);
+      // Sending is an act of intent: snap back to the bottom and follow.
+      stickToBottom('smooth');
       startLoop(`${prefix}${t}`, replyId ? { replyToId: replyId } : undefined);
     },
-    [running, replyTo, startLoop],
+    [running, replyTo, startLoop, stickToBottom],
   );
 
   /** Artifact answers (polls/checklists) flow back into the loop as user input. */
@@ -1474,7 +1500,7 @@ export function AgentHarness({ onToast, onNavigate, variant = 'agent' }: Props):
             <button
               className="gf-btn gf-scroll-bottom"
               title="Scroll to bottom"
-              onClick={() => threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}
+              onClick={() => stickToBottom('smooth')}
             >
               ↓
             </button>
