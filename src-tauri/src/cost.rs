@@ -39,6 +39,9 @@ fn ensure_tables(conn: &Connection) {
             updated_at TEXT NOT NULL
         );",
     );
+    // Flat per-call costs (e.g. an image priced in dollars, not tokens).
+    // Additive and idempotent; token-based rows leave it NULL.
+    let _ = conn.execute("ALTER TABLE token_usage ADD COLUMN cost_usd REAL", []);
 }
 
 fn now_iso() -> String {
@@ -61,6 +64,21 @@ pub fn record(app: &tauri::AppHandle, provider_id: &str, model: &str, prompt: u6
                 prompt as i64,
                 completion as i64
             ],
+        );
+    }
+}
+
+/// Record a flat per-call cost that is not token-based (e.g. an OpenRouter
+/// image, whose API reports the exact price in dollars).
+pub fn record_cost(app: &tauri::AppHandle, provider_id: &str, model: &str, usd: f64) {
+    if !(usd > 0.0) {
+        return;
+    }
+    if let Ok(conn) = open_conn(app) {
+        let _ = conn.execute(
+            "INSERT INTO token_usage (ts, provider_id, model, prompt_tokens, completion_tokens, cost_usd)
+             VALUES (?1, ?2, ?3, 0, 0, ?4)",
+            params![now_iso(), provider_id, model, usd],
         );
     }
 }
@@ -118,7 +136,8 @@ pub fn cost_summary(app: tauri::AppHandle, days: Option<u32>) -> Result<serde_js
     let mut stmt = conn
         .prepare(
             "SELECT substr(ts, 1, 10) AS day, provider_id, model,
-                    SUM(prompt_tokens) AS pt, SUM(completion_tokens) AS ct
+                    SUM(prompt_tokens) AS pt, SUM(completion_tokens) AS ct,
+                    SUM(COALESCE(cost_usd, 0)) AS flat_cost
              FROM token_usage
              WHERE ts >= ?1
              GROUP BY day, provider_id, model
@@ -133,6 +152,7 @@ pub fn cost_summary(app: tauri::AppHandle, days: Option<u32>) -> Result<serde_js
                 r.get::<_, String>(2)?,
                 r.get::<_, i64>(3)?,
                 r.get::<_, i64>(4)?,
+                r.get::<_, f64>(5)?,
             ))
         })
         .map_err(|e| e.to_string())?;
@@ -143,14 +163,17 @@ pub fn cost_summary(app: tauri::AppHandle, days: Option<u32>) -> Result<serde_js
     let mut total_completion = 0i64;
     let mut unpriced: BTreeSet<String> = BTreeSet::new();
     for row in rows {
-        let (day, provider_id, model, pt, ct) = row.map_err(|e| e.to_string())?;
+        let (day, provider_id, model, pt, ct, flat_cost) = row.map_err(|e| e.to_string())?;
         let (input_price, output_price) = prices.get(&model).copied().unwrap_or((0.0, 0.0));
-        let priced = prices.contains_key(&model);
+        // A row with a reported flat cost (images) is priced by definition;
+        // token-based rows need a configured price.
+        let priced = prices.contains_key(&model) || flat_cost > 0.0;
         if !priced {
             unpriced.insert(model.clone());
         }
         let cost = pt as f64 / 1_000_000.0 * input_price
-            + ct as f64 / 1_000_000.0 * output_price;
+            + ct as f64 / 1_000_000.0 * output_price
+            + flat_cost;
         total_cost += cost;
         total_prompt += pt;
         total_completion += ct;

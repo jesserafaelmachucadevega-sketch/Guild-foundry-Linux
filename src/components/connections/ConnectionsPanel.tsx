@@ -553,6 +553,7 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
   const [key, setKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [model, setModel] = useState(IMAGE_MODELS[0].id);
+  const [orImageModel, setOrImageModel] = useState('openai/gpt-image-2');
   const [videoModel, setVideoModel] = useState(VIDEO_MODELS[0].id);
   const [voice, setVoice] = useState(TTS_VOICES[0].id);
   const [ttsLang, setTtsLang] = useState('en');
@@ -569,6 +570,11 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
     void invoke<string | null>('settings_get', { key: 'media.image_model' })
       .then((v) => {
         if (live && v && IMAGE_MODELS.some((m) => m.id === v)) setModel(v);
+      })
+      .catch(() => {});
+    void invoke<string | null>('settings_get', { key: 'media.openrouter_image_model' })
+      .then((v) => {
+        if (live && typeof v === 'string' && v.trim()) setOrImageModel(v);
       })
       .catch(() => {});
     void invoke<string | null>('settings_get', { key: 'media.video_model' })
@@ -656,6 +662,18 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
       await invoke('settings_set', { key: 'media.image_model', value: id });
     } catch (e) {
       setModel(prev);
+      onToast(errText(e));
+    }
+  };
+
+  const changeOrImageModel = async (value: string) => {
+    const prev = orImageModel;
+    const next = value.trim() || 'openai/gpt-image-2';
+    setOrImageModel(next);
+    try {
+      await invoke('settings_set', { key: 'media.openrouter_image_model', value: next });
+    } catch (e) {
+      setOrImageModel(prev);
       onToast(errText(e));
     }
   };
@@ -761,6 +779,21 @@ function ImageGenCard({ onToast }: { onToast: (msg: string) => void }): React.Re
             </option>
           ))}
         </select>
+      </label>
+      <label className="gf-label conn-modellabel">
+        <span
+          className="gf-muted conn-small"
+          title="Used whenever your OpenRouter key is connected — that balance pays for the image and the exact cost is logged in Usage & Cost. Fal stays the fallback."
+        >
+          OpenRouter image model (preferred when connected)
+        </span>
+        <input
+          className="gf-input"
+          value={orImageModel}
+          onChange={(e) => setOrImageModel(e.target.value)}
+          onBlur={() => void changeOrImageModel(orImageModel)}
+          placeholder="openai/gpt-image-2"
+        />
       </label>
       <label className="gf-label conn-modellabel">
         <span className="gf-muted conn-small">Video model</span>

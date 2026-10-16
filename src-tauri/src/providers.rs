@@ -278,6 +278,25 @@ fn provider_key_name(id: &str) -> String {
     format!("gfa-provider:{}", id)
 }
 
+/// Keyring secret for the first enabled provider that speaks OpenRouter's API
+/// (kind 'openrouter', or an openrouter.ai base URL). The media module uses
+/// this so image generation reuses the provider key the user already stored
+/// instead of asking for a second one.
+pub(crate) fn openrouter_provider_key(app: &tauri::AppHandle) -> Option<String> {
+    let conn = open_db(app).ok()?;
+    let id: String = conn
+        .query_row(
+            "SELECT id FROM providers
+             WHERE enabled = 1 AND (kind = 'openrouter' OR base_url LIKE '%openrouter.ai%')
+             ORDER BY (kind = 'openrouter') DESC, name ASC
+             LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .ok()?;
+    crate::secrets::keyring_get(&provider_key_name(&id))
+}
+
 // ---------------------------------------------------------------------------
 // Database helpers (reuse db.rs tables; additive columns only).
 // ---------------------------------------------------------------------------

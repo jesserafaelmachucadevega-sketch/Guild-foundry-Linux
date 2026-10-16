@@ -19,6 +19,90 @@ pub const FAL_KEYRING_KEY: &str = "gfa-media-fal-key";
 pub const DEFAULT_MODEL: &str = "fal-ai/flux-2-dev";
 pub const DEFAULT_VIDEO_MODEL: &str = "fal-ai/wan/v2.7/text-to-video";
 
+/// OpenRouter's dedicated image API (POST /api/v1/images). When the user has
+/// an OpenRouter provider key stored, image generation prefers this path —
+/// it reuses their existing OpenRouter balance, returns base64 bytes directly
+/// (no download step), and reports the exact per-image cost. Fal stays as the
+/// automatic fallback, and remains the only video backend.
+pub const OPENROUTER_IMAGE_MODEL_KEY: &str = "media.openrouter_image_model";
+pub const DEFAULT_OPENROUTER_IMAGE_MODEL: &str = "openai/gpt-image-2";
+const OPENROUTER_IMAGES_URL: &str = "https://openrouter.ai/api/v1/images";
+
+/// Honest, actionable mapping of OpenRouter image-API failures.
+pub fn openrouter_image_error(status: u16, body: &str) -> String {
+    let snippet: String = body.chars().take(300).collect();
+    match status {
+        401 => "OpenRouter rejected the key (401) — check the OpenRouter provider in the Model & API Hub".to_string(),
+        402 => "OpenRouter says the balance is below the $1 minimum the image API requires — top up and retry".to_string(),
+        429 => "OpenRouter rate-limited the image request (429) — wait a moment and retry".to_string(),
+        s => format!("OpenRouter image API error ({}): {}", s, snippet.trim()),
+    }
+}
+
+/// Image bytes (base64), file extension, and reported cost from a buffered
+/// OpenRouter image response: `{data:[{b64_json, media_type}], usage:{cost}}`.
+pub fn parse_openrouter_image(res: &serde_json::Value) -> Result<(String, String, Option<f64>), String> {
+    let first = res
+        .get("data")
+        .and_then(|d| d.as_array())
+        .and_then(|a| a.first())
+        .ok_or_else(|| "OpenRouter returned no image data".to_string())?;
+    let b64 = first
+        .get("b64_json")
+        .and_then(|b| b.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "OpenRouter response had no b64_json image".to_string())?;
+    let ext = match first.get("media_type").and_then(|m| m.as_str()) {
+        Some("image/jpeg") => "jpg",
+        Some("image/webp") => "webp",
+        _ => "png",
+    };
+    let cost = res
+        .get("usage")
+        .and_then(|u| u.get("cost"))
+        .and_then(|c| c.as_f64());
+    Ok((b64.to_string(), ext.to_string(), cost))
+}
+
+#[cfg(test)]
+mod openrouter_image_tests {
+    use super::*;
+
+    #[test]
+    fn parses_buffered_image_response() {
+        let res = serde_json::json!({
+            "data": [{ "b64_json": "iVBORw0KGgoAAA", "media_type": "image/png" }],
+            "usage": { "cost": 0.0123 }
+        });
+        let (b64, ext, cost) = parse_openrouter_image(&res).expect("parse");
+        assert_eq!(b64, "iVBORw0KGgoAAA");
+        assert_eq!(ext, "png");
+        assert_eq!(cost, Some(0.0123));
+
+        let jpeg = serde_json::json!({
+            "data": [{ "b64_json": "AAAA", "media_type": "image/jpeg" }]
+        });
+        let (_, ext, cost) = parse_openrouter_image(&jpeg).expect("parse");
+        assert_eq!(ext, "jpg");
+        assert!(cost.is_none());
+
+        let empty = serde_json::json!({ "data": [] });
+        assert!(parse_openrouter_image(&empty).is_err());
+        let missing = serde_json::json!({ "data": [{ "media_type": "image/png" }] });
+        assert!(parse_openrouter_image(&missing).is_err());
+    }
+
+    #[test]
+    fn error_mapping_names_the_real_problem() {
+        assert!(openrouter_image_error(401, "").contains("rejected the key"));
+        assert!(openrouter_image_error(402, "").contains("$1 minimum"));
+        assert!(openrouter_image_error(429, "").contains("rate-limited"));
+        assert!(openrouter_image_error(500, "boom").contains("HTTP") == false);
+        assert!(openrouter_image_error(500, "boom").contains("500"));
+        assert!(openrouter_image_error(500, "boom").contains("boom"));
+    }
+}
+
 /// fal.run model ids we officially support in the UI picker.
 pub const KNOWN_MODELS: &[(&str, &str)] = &[
     ("fal-ai/flux-2-dev", "~$0.025/image — best quality per dollar"),
@@ -450,7 +534,118 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
+/// Image generation, backend-aware: OpenRouter first when the user has an
+/// OpenRouter provider key (their balance, exact cost reporting, base64 in
+/// the response), Fal otherwise or as the automatic fallback. An explicit
+/// `fal-ai/*` model argument always selects Fal.
 pub fn generate_image(
+    app: &tauri::AppHandle,
+    prompt: &str,
+    model_arg: Option<&str>,
+    image_size_arg: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    if prompt.trim().is_empty() {
+        return Err("prompt must not be empty".to_string());
+    }
+    let model_arg = model_arg.map(str::trim).filter(|m| !m.is_empty());
+    let explicit_fal = model_arg.map(|m| m.starts_with("fal-ai/")).unwrap_or(false);
+
+    if !explicit_fal {
+        if let Some(or_key) = crate::providers::openrouter_provider_key(app) {
+            let setting_model: Option<String> =
+                crate::settings::settings_get(app.clone(), OPENROUTER_IMAGE_MODEL_KEY.to_string())
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+                    .filter(|s| !s.trim().is_empty());
+            let or_model = model_arg
+                .map(|s| s.to_string())
+                .or(setting_model)
+                .unwrap_or_else(|| DEFAULT_OPENROUTER_IMAGE_MODEL.to_string());
+            match openrouter_generate_image(app, &or_key, prompt, &or_model) {
+                Ok(v) => return Ok(v),
+                Err(or_err) => {
+                    return fal_generate_image(app, prompt, None, image_size_arg).map_err(|fal_err| {
+                        format!(
+                            "OpenRouter image generation failed ({}) and Fal failed too ({})",
+                            or_err, fal_err
+                        )
+                    });
+                }
+            }
+        }
+    }
+    fal_generate_image(app, prompt, model_arg, image_size_arg)
+}
+
+/// OpenRouter buffered image generation. Saves the decoded bytes locally and
+/// records the reported per-image cost in the usage ledger.
+fn openrouter_generate_image(
+    app: &tauri::AppHandle,
+    key: &str,
+    prompt: &str,
+    model: &str,
+) -> Result<serde_json::Value, String> {
+    use base64::Engine as _;
+    let out = tauri::async_runtime::block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("HTTP client failed: {}", e))?;
+        let resp = client
+            .post(OPENROUTER_IMAGES_URL)
+            .bearer_auth(key)
+            .json(&serde_json::json!({ "model": model, "prompt": prompt }))
+            .send()
+            .await
+            .map_err(|e| format!("OpenRouter request failed: {}", e))?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if status >= 400 {
+            return Err(openrouter_image_error(status, &text));
+        }
+        let res: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("OpenRouter returned invalid JSON: {}", e))?;
+        let (b64, ext, cost) = parse_openrouter_image(&res)?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64.trim())
+            .map_err(|e| format!("image decode failed: {}", e))?;
+        if bytes.is_empty() {
+            return Err("OpenRouter returned zero image bytes".to_string());
+        }
+
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("media");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let path = dir.join(format!(
+            "img-{}.{}",
+            chrono::Utc::now().format("%Y%m%dT%H%M%S%3f"),
+            ext
+        ));
+        std::fs::write(&path, &bytes).map_err(|e| format!("save failed: {}", e))?;
+
+        // The API reports the exact cost of this image; ledger it.
+        if let Some(c) = cost {
+            crate::cost::record_cost(app, "openrouter", model, c);
+        }
+
+        Ok::<serde_json::Value, String>(serde_json::json!({
+            "path": path.to_string_lossy(),
+            "model": model,
+            "provider": "openrouter",
+            "cost_usd": cost,
+            "bytes": bytes.len(),
+        }))
+    })?;
+    Ok(out)
+}
+
+/// The original Fal path, kept intact as the fallback (and the explicit
+/// choice when a `fal-ai/*` model is named).
+fn fal_generate_image(
     app: &tauri::AppHandle,
     prompt: &str,
     model_arg: Option<&str>,

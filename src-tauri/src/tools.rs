@@ -195,13 +195,13 @@ fn tool_registry() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "media.generate_image".into(),
-            description: "Generate an image from a text prompt via the Fal API (default FLUX 2 Dev, ~$0.025/image). Works with ANY loaded model — local or frontier — because generation happens server-side. The image is saved locally and the result carries its file path; the harness renders it for the user. Requires a Fal API key (Connections > Image generation). Each call costs real money: keep prompts deliberate."
+            description: "Generate an image from a text prompt. Prefers OpenRouter (openai/gpt-image-2 by default) whenever your OpenRouter key is connected — that balance is used and the exact per-image cost is reported; otherwise it generates via Fal (default FLUX 2 Dev). Works with ANY loaded model — local or frontier — because generation happens server-side. The image is saved locally and the result carries its file path; the harness renders it for the user. Each call costs real money: keep prompts deliberate."
                 .into(),
             schema: schema(
                 serde_json::json!({
                     "prompt": { "type": "string", "description": "Detailed image prompt. Be specific: subject, style, lighting, composition." },
-                    "model": { "type": "string", "description": "Fal model id override, e.g. fal-ai/flux-2-dev, fal-ai/flux-2-pro, fal-ai/stable-diffusion-xl. Defaults to the media.image_model setting, then fal-ai/flux-2-dev." },
-                    "image_size": { "type": "string", "description": "square_hd (default), square, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9." }
+                    "model": { "type": "string", "description": "Model override. OpenRouter ids (openai/gpt-image-2, google/gemini-3-pro-image, bytedance-seed/seedream-5-0-pro …) select the OpenRouter backend; fal-ai/* ids select Fal. Default: the media.openrouter_image_model setting, then openai/gpt-image-2 when OpenRouter is connected." },
+                    "image_size": { "type": "string", "description": "Fal-only sizing (square_hd default, square, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9). OpenRouter models use their own defaults." }
                 }),
                 &["prompt"],
             ),
