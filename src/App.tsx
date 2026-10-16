@@ -42,8 +42,9 @@ export default function App(): React.ReactElement {
   const [connectionState, setConnectionState] = useState('IDLE');
   // Light is the default theme (white and blues on deep blue-black).
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  // Chat bubble aesthetic (Settings → Appearance); classic is the default.
-  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>('classic');
+  // Chat bubble aesthetic (Settings → Appearance); Minimal is the owner's
+  // preferred default, Classic and Card remain one click away.
+  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>('minimal');
   const { toasts, pushToast } = useToasts();
 
   const openSection = (s: NavSection): void => {
