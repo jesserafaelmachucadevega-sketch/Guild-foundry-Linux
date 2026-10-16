@@ -8,7 +8,7 @@
 // to the OS keychain only — the agent sees tool names, never tokens.
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { invoke } from '../../lib/api';
+import { invoke, copyToClipboard } from '../../lib/api';
 import type { McpServerView } from '../mcp/types';
 import { ApiIntegrationCards, StatusBadge, type BadgeState, type IntegrationStatus } from './ApiIntegrationCards';
 import { AccountCards } from './AccountCards';
@@ -1156,7 +1156,7 @@ export function ConnectionsPanel({ onToast }: Props): React.ReactElement {
                   <button
                     className="gf-btn gf-btn-sm"
                     onClick={() => {
-                      void navigator.clipboard?.writeText(oauth.authUrl).then(
+                      void copyToClipboard(oauth.authUrl).then(
                         () => onToast('Sign-in URL copied'),
                         () => onToast('Copy failed — select the URL manually'),
                       );

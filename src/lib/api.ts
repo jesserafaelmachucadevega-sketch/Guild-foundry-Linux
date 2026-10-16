@@ -32,15 +32,43 @@ export async function invoke<T>(channel: string, payload?: unknown): Promise<T> 
 }
 
 export async function copyToClipboard(text: string): Promise<void> {
+  const errors: string[] = [];
   if (isDesktop()) {
-    // Native clipboard via the Tauri clipboard-manager plugin.
-    const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
-    await writeText(text);
-    return;
+    // Native clipboard via the Tauri clipboard-manager plugin. Requires the
+    // `clipboard-manager:allow-write-text` capability — the plugin's default
+    // permission set is deliberately EMPTY, so without it every call is denied.
+    try {
+      const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+      await writeText(text);
+      return;
+    } catch (e) {
+      errors.push(`native: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
-  if (navigator.clipboard) {
-    await navigator.clipboard.writeText(text);
-    return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (e) {
+    errors.push(`web: ${e instanceof Error ? e.message : String(e)}`);
   }
-  throw new Error('clipboard-unavailable');
+  // Legacy fallback: a hidden textarea + execCommand works in WebKitGTK even
+  // when the async clipboard APIs are unavailable or denied.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) return;
+    errors.push('fallback: the browser refused execCommand("copy")');
+  } catch (e) {
+    errors.push(`fallback: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  throw new Error(errors.join('; ') || 'clipboard-unavailable');
 }

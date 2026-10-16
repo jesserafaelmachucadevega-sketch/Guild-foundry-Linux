@@ -4,7 +4,7 @@
 // tool calls, and per-server permission boundaries. Tabs into PermissionCenter.
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { invoke, isDesktop, DesktopCapabilityRequired } from '../../lib/api';
+import { invoke, isDesktop, DesktopCapabilityRequired, copyToClipboard } from '../../lib/api';
 import { PermissionCenter } from './PermissionCenter';
 import type {
   McpAuthType,
@@ -704,7 +704,7 @@ export function McpPanel({ onToast }: Props): React.ReactElement {
                     type="button"
                     className="gf-btn"
                     onClick={() => {
-                      void navigator.clipboard?.writeText(oauth.authUrl).then(
+                      void copyToClipboard(oauth.authUrl).then(
                         () => onToast('Authorization URL copied'),
                         () => onToast('Copy failed'),
                       );

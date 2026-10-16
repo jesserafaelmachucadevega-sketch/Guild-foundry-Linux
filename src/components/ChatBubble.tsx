@@ -37,8 +37,8 @@ export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReactio
     try {
       await copyToClipboard(message.content);
       onToast('Copied to clipboard');
-    } catch {
-      onToast('Copy failed');
+    } catch (e) {
+      onToast(`Copy failed — ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 

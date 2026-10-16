@@ -9,7 +9,7 @@
 // (Nextcloud, Fastmail, Radicale, iCloud with an app password, and similar).
 
 import React, { useEffect, useState } from 'react';
-import { invoke } from '../../lib/api';
+import { invoke, copyToClipboard } from '../../lib/api';
 
 export interface AccountTest {
   ok: boolean;
@@ -970,7 +970,7 @@ function MobileCard({ onToast }: { onToast: (msg: string) => void }): React.Reac
   const copy = async (): Promise<void> => {
     if (!status?.url) return;
     try {
-      await navigator.clipboard.writeText(status.url);
+      await copyToClipboard(status.url);
       onToast('Link copied — open it on your phone (same Wi-Fi)');
     } catch (e) {
       onToast(`${errText(e)} — select the link field and copy it manually`);
