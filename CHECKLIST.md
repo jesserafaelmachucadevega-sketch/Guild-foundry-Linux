@@ -165,3 +165,13 @@ Status: built and unit-tested; awaiting the user's first live run in the UI.
 - [x] Honest limits recorded — no token-by-token streaming (the CLI prints its answer once at the end); the CLI's own file writes and shell commands stay denied (no `--yolo`), so this provider is a brain: the app's own tool loop does the file work
 - [x] Tests — `parse_models`, `parse_run`, exit-code → sentence mapping; a gated test for a real `--list-models` capture (`CC_MODELS_FIXTURE=… cargo test commandcode::tests::parses_a_real_capture -- --ignored`); a live headless round-trip test marked `#[ignore]` because it costs a real request
 
+### Fix — Context7 "415 · Unexpected response" (2026-10-16)
+
+Root cause, reproduced against the live endpoint: reqwest **appends** headers and `.json()` already sets `Content-Type`, so passing it again sent the header **twice** — one copy answers 200, two copies answer 415 with Context7's exact error text. Fixed in the request builders, so the whole class cannot come back.
+
+- [x] `integrations/mod.rs` — `post_json_request` sets Content-Type once and drops any caller-supplied copy; the Context7 branch no longer passes one
+- [x] `mcp.rs` — streamable POSTs go through one `post_rpc` helper (Content-Type set once); the legacy SSE POST no longer sets it either; `apply_auth` drops a saved custom Content-Type header for the same reason
+- [x] Honest wording — Context7's `initialize` answers 200 even with a bogus key (measured), so the badge no longer claims "key accepted": it now says the endpoint answered and that the key is only checked on the first real query
+- [x] Tests — offline guards asserting exactly one Content-Type header in both modules, plus a live probe through our own handshake (`cargo test integrations::tests::live_context7_probe -- --ignored`) which returns **200 · Endpoint reachable**
+- [x] Full Rust suite green: 48 passed, 0 failed, 3 ignored (the three that cost real requests/credits)
+
