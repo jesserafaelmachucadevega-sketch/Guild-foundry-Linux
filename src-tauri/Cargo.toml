@@ -22,7 +22,11 @@ tokio = { version = "1", features = ["full"] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-keyring = "3"
+# Linux Secret Service (gnome-keyring) backend. WITHOUT a backend feature the
+# crate silently falls back to its in-memory MOCK store, where writes only
+# survive inside the same Entry object — every "saved" secret vanished.
+# crypto-rust keeps the project's no-OpenSSL stance.
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 sysinfo = "0.36"
 sha2 = "0.10"
 hex = "0.4"
