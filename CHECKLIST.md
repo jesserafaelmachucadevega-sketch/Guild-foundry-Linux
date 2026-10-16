@@ -144,6 +144,7 @@ Status: implemented + verified at the layer level (typecheck, vite build, IPC 16
 - [x] One-shot permission grants actually consume after first successful use
 - [x] CI: IPC contract check added; cmake/clang/libclang added to the Rust job
 - [x] Kokoro local TTS — **ENABLED + VERIFIED on target machine** (sherpa-onnx engine + kokoro-en-v0_19; synthesized two voices, 24 kHz, RMS-validated). Local-first in `media_speak_text`; cloud is the fallback only
+- [x] Kokoro voices auditioned by ear on the target machine — `am_adam` (the YouTube-narrator male) approved and kept as the default in `media.tts_voice`; `af_bella` also approved, available in the voice picker
 - [x] Bundled release build — `externalBin` sidecar packaging in `tauri.bundle.conf.json` + `scripts/prepare_external_bin.mjs` (used by `npm run tauri:build`)
 - [x] Offline semantic memory search — local GGUF embeddings through the in-process llama.cpp engine (`gguf::embed_text`), hybrid cosine+keyword ranking, background indexing on put, `memory_embed_reindex` repair path, UI status/reindex
 - [x] MCP stdio session warming — children pooled per server, checked out per call, fingerprint-checked against config drift, killed on app exit; covered by two live-process tests
