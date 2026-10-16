@@ -444,6 +444,120 @@ body {
   color: rgba(16, 36, 58, 0.8);
 }
 
+/* ---------------------------------------------------------------------------
+   Bubble styles — Settings → Appearance → Chat bubbles (ui.bubble_style).
+   "classic" is the styling above; these variants override it per data-bubbles.
+   --------------------------------------------------------------------------- */
+
+/* Minimal — colored bubble, no header band: the speaker name is a quiet
+   caption, a soft shadow replaces the hard border. */
+[data-bubbles="minimal"] .gf-bubble {
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 1px 3px rgba(4, 10, 24, 0.22);
+}
+[data-bubbles="minimal"] .gf-bubble-header {
+  background: transparent;
+  border-bottom: none;
+  padding: 8px 12px 0 12px;
+}
+[data-bubbles="minimal"] .gf-bubble-user .gf-bubble-header,
+[data-bubbles="minimal"] .gf-bubble-assistant .gf-bubble-header,
+[data-bubbles="minimal"] .gf-bubble-assistant--local .gf-bubble-header {
+  background: transparent;
+  border-bottom: none;
+}
+[data-bubbles="minimal"] .gf-bubble-role {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+[data-bubbles="minimal"] .gf-bubble-body {
+  padding: 2px 12px 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+[data-bubbles="minimal"] .gf-bubble-actions-row {
+  border-top: none;
+}
+[data-bubbles="minimal"] .gf-bubble-user {
+  border-radius: 20px 6px 20px 20px;
+}
+[data-bubbles="minimal"] .gf-bubble-user .gf-bubble-header {
+  border-radius: 20px 6px 0 0;
+}
+[data-bubbles="minimal"] .gf-bubble-user .gf-bubble-body {
+  border-radius: 0 0 20px 20px;
+}
+[data-bubbles="minimal"] .gf-bubble-assistant {
+  border-radius: 6px 20px 20px 20px;
+}
+[data-bubbles="minimal"] .gf-bubble-assistant .gf-bubble-header {
+  border-radius: 6px 20px 0 0;
+}
+
+/* Card — quiet surface blocks on the pane background with a colored rail per
+   speaker; the most "instrument" of the three. */
+[data-bubbles="card"] .gf-bubble {
+  background: var(--gf-panel-2);
+  border: 1px solid var(--gf-border);
+  border-left: 3px solid var(--gf-border-strong);
+  border-radius: 10px;
+  box-shadow: none;
+}
+[data-bubbles="card"] .gf-bubble-header {
+  background: transparent;
+  border-bottom: 1px solid var(--gf-border);
+  padding: 6px 12px;
+  border-radius: 10px 10px 0 0;
+}
+[data-bubbles="card"] .gf-bubble-user .gf-bubble-header {
+  background: transparent;
+  border-radius: 10px 10px 0 0;
+}
+[data-bubbles="card"] .gf-bubble-user .gf-bubble-body {
+  background: transparent;
+}
+[data-bubbles="card"] .gf-bubble-body,
+[data-bubbles="card"] .gf-bubble-user .gf-bubble-body,
+[data-bubbles="card"] .gf-bubble-assistant--local .gf-bubble-body {
+  color: var(--gf-offwhite);
+}
+[data-bubbles="card"] .gf-bubble-body pre,
+[data-bubbles="card"] .gf-bubble-user .gf-bubble-body pre,
+[data-bubbles="card"] .gf-bubble-assistant--local .gf-bubble-body pre {
+  background: var(--gf-black);
+  color: var(--gf-offwhite);
+}
+[data-bubbles="card"] .gf-bubble-role,
+[data-bubbles="card"] .gf-bubble-user .gf-bubble-role,
+[data-bubbles="card"] .gf-bubble-assistant .gf-bubble-role,
+[data-bubbles="card"] .gf-bubble-assistant--local .gf-bubble-role {
+  color: var(--gf-muted);
+}
+[data-bubbles="card"] .gf-reaction-summary,
+[data-bubbles="card"] .gf-bubble-user .gf-reaction-summary,
+[data-bubbles="card"] .gf-bubble-assistant .gf-reaction-summary,
+[data-bubbles="card"] .gf-bubble-assistant--local .gf-reaction-summary {
+  color: var(--gf-muted);
+}
+[data-bubbles="card"] .gf-icon-btn,
+[data-bubbles="card"] .gf-bubble-user .gf-icon-btn,
+[data-bubbles="card"] .gf-bubble-assistant .gf-icon-btn,
+[data-bubbles="card"] .gf-bubble-assistant--local .gf-icon-btn {
+  color: var(--gf-muted);
+  border-color: var(--gf-border);
+}
+[data-bubbles="card"] .gf-bubble-user {
+  border-left-color: #7d9fd4;
+}
+[data-bubbles="card"] .gf-bubble-assistant {
+  border-left-color: var(--gf-bubble-cloud, #2e7de9);
+}
+[data-bubbles="card"] .gf-bubble-assistant--local {
+  border-left-color: #08a04b;
+}
+
 /* Agent tab thread container */
 .agent-thread {
   display: flex;

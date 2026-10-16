@@ -7,7 +7,7 @@ import { SettingsDrawer } from './components/SettingsDrawer';
 import { AgentHarness } from './components/agent/AgentHarness';
 import { BuilderHub } from './components/hubs/BuilderHub';
 import { ModelsApiHub } from './components/hubs/ModelsApiHub';
-import { SystemHub } from './components/hubs/SystemHub';
+import { SystemHub, type BubbleStyle } from './components/hubs/SystemHub';
 import { ProjectsPanel } from './components/projects/ProjectsPanel';
 import { ConferenceRoom } from './components/conference/ConferenceRoom';
 import { SchedulerRunner } from './components/scheduler/SchedulerRunner';
@@ -42,6 +42,8 @@ export default function App(): React.ReactElement {
   const [connectionState, setConnectionState] = useState('IDLE');
   // Light is the default theme (white and blues on deep blue-black).
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  // Chat bubble aesthetic (Settings → Appearance); classic is the default.
+  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>('classic');
   const { toasts, pushToast } = useToasts();
 
   const openSection = (s: NavSection): void => {
@@ -62,14 +64,23 @@ export default function App(): React.ReactElement {
         if (v === 'dark' || v === 'light') setTheme(v);
       })
       .catch(() => undefined);
+    void invoke<string | null>('settings_get', { key: 'ui.bubble_style' })
+      .then((v) => {
+        if (v === 'classic' || v === 'minimal' || v === 'card') setBubbleStyle(v);
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-bubbles', bubbleStyle);
+  }, [bubbleStyle]);
+
   return (
-    <div data-theme={theme} style={{ height: '100%', width: '100%' }}>
+    <div data-theme={theme} data-bubbles={bubbleStyle} style={{ height: '100%', width: '100%' }}>
     <AppShell
       section={section}
       onSection={openSection}
@@ -115,6 +126,8 @@ export default function App(): React.ReactElement {
           onNavigate={openSection}
           theme={theme}
           onTheme={setTheme}
+          bubbleStyle={bubbleStyle}
+          onBubbleStyle={setBubbleStyle}
           onEditPrompts={() => setSettingsOpen(true)}
         />
       ) : (

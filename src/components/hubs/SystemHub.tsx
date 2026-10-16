@@ -20,8 +20,18 @@ interface Props {
   onNavigate: (s: NavSection) => void;
   theme: ThemeMode;
   onTheme: (t: ThemeMode) => void;
+  bubbleStyle: BubbleStyle;
+  onBubbleStyle: (b: BubbleStyle) => void;
   onEditPrompts: () => void;
 }
+
+export type BubbleStyle = 'classic' | 'minimal' | 'card';
+
+const BUBBLE_STYLES: { id: BubbleStyle; label: string; hint: string }[] = [
+  { id: 'classic', label: 'Classic', hint: 'Colored bubble with a labeled header band (the original look).' },
+  { id: 'minimal', label: 'Minimal', hint: 'Soft rounded bubble, speaker name as a quiet caption, soft shadow instead of a border.' },
+  { id: 'card', label: 'Card', hint: 'Quiet surface block with a speaker-colored side rail (blue cloud, green local, grey you).' },
+];
 
 type HubTab = 'overview' | 'registry' | 'security' | 'usage' | 'diagnostics' | 'updates' | 'appearance';
 type RegistryTab = 'tools' | 'connections' | 'mcp';
@@ -80,9 +90,11 @@ function OverviewPanel({ onNavigate }: { onNavigate: (s: NavSection) => void }):
   );
 }
 
-function AppearancePanel({ theme, onTheme, onNavigate, onEditPrompts }: {
+function AppearancePanel({ theme, onTheme, bubbleStyle, onBubbleStyle, onNavigate, onEditPrompts }: {
   theme: ThemeMode;
   onTheme: (t: ThemeMode) => void;
+  bubbleStyle: BubbleStyle;
+  onBubbleStyle: (b: BubbleStyle) => void;
   onNavigate: (s: NavSection) => void;
   onEditPrompts: () => void;
 }): React.ReactElement {
@@ -92,6 +104,15 @@ function AppearancePanel({ theme, onTheme, onNavigate, onEditPrompts }: {
       await invoke('settings_set', { key: 'ui.theme', value: t });
     } catch {
       // Theme still applies for this session; persistence is best-effort.
+    }
+  };
+
+  const setBubbleStyleAndPersist = async (b: BubbleStyle): Promise<void> => {
+    onBubbleStyle(b);
+    try {
+      await invoke('settings_set', { key: 'ui.bubble_style', value: b });
+    } catch {
+      // Applies for this session; persistence is best-effort.
     }
   };
 
@@ -108,6 +129,24 @@ function AppearancePanel({ theme, onTheme, onNavigate, onEditPrompts }: {
       </div>
       <p className="gf-muted" style={{ fontSize: 12 }}>
         White and blues, from true blue to royal blue, on deep blue-black surfaces.
+      </p>
+      <hr className="gf-divider" />
+      <span className="gf-label">Chat bubbles</span>
+      <div className="gf-view-switcher" role="tablist" aria-label="Chat bubble style" style={{ alignSelf: 'flex-start' }}>
+        {BUBBLE_STYLES.map((s) => (
+          <button
+            key={s.id}
+            role="tab"
+            aria-selected={bubbleStyle === s.id}
+            className={bubbleStyle === s.id ? 'active' : ''}
+            onClick={() => void setBubbleStyleAndPersist(s.id)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <p className="gf-muted" style={{ fontSize: 12 }}>
+        {BUBBLE_STYLES.find((s) => s.id === bubbleStyle)?.hint ?? ''}
       </p>
       <hr className="gf-divider" />
       <span className="gf-label">Credentials</span>
@@ -186,6 +225,8 @@ export function SystemHub(props: Props): React.ReactElement {
             <AppearancePanel
               theme={props.theme}
               onTheme={props.onTheme}
+              bubbleStyle={props.bubbleStyle}
+              onBubbleStyle={props.onBubbleStyle}
               onNavigate={props.onNavigate}
               onEditPrompts={props.onEditPrompts}
             />
