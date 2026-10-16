@@ -1114,6 +1114,30 @@ pub async fn provider_refresh_models(
 // Chat: request building per provider family.
 // ---------------------------------------------------------------------------
 
+/// Hardcoded communication contract appended to EVERY model call's system
+/// prompt — every provider, every caller (agent, coding agent, conference,
+/// builder, mobile companion). It cannot be disabled from a prompt editor.
+///
+/// The tool-call carve-out is deliberate: this app uses prompt-based tool
+/// calling, so the fenced tool format must stay available — but it is
+/// machinery, never part of what the model says to the user.
+const COMMS_CONTRACT: &str = "COMMUNICATION CONTRACT (applies to every reply):\n\
+Speak in plain, natural prose. Never put JSON, schemas, code, machine tags, template markers, or tool-internal syntax in your visible reply — not even fragments, not even as an example. Two exceptions only: (1) the exact tool-call format your tool instructions define, which is how you use tools and is never shown to the user; (2) quoting code, commands, config, or data when the user asked to see it or the conversation is specifically about code. If you catch yourself about to print anything machine-formatted, describe it in words instead.";
+
+/// Append the contract once; idempotent against prompts that already carry it.
+fn with_comms_contract(system: &mut String) {
+    if !system.contains("COMMUNICATION CONTRACT") {
+        if !system.trim().is_empty() {
+            system.push_str("\n\n");
+        }
+        system.push_str(COMMS_CONTRACT);
+    }
+}
+
+fn comms_contract_owned() -> String {
+    COMMS_CONTRACT.to_string()
+}
+
 /// Flatten a chat request into (role, content) pairs with the system prompt
 /// first — the shape the in-process GGUF engine expects.
 fn chat_messages_with_system(messages: &[ChatMsg], params: &ChatParams) -> Vec<(String, String)> {
@@ -1137,6 +1161,12 @@ fn chat_messages_with_system(messages: &[ChatMsg], params: &ChatParams) -> Vec<(
             out.push((m.role.clone(), m.content.clone()));
         }
     }
+    // Every call carries the communication contract, even with no system
+    // prompt at all.
+    match out.first_mut() {
+        Some((role, content)) if role == "system" => with_comms_contract(content),
+        _ => out.insert(0, ("system".to_string(), comms_contract_owned())),
+    }
     out
 }
 
@@ -1150,11 +1180,42 @@ fn openai_messages(messages: &[ChatMsg], params: &ChatParams) -> Vec<serde_json:
     let mut out = Vec::new();
     if let Some(sys) = params.system_prompt.as_deref() {
         if !sys.trim().is_empty() {
+            let mut sys = sys.to_string();
+            with_comms_contract(&mut sys);
             out.push(serde_json::json!({"role": "system", "content": sys}));
         }
     }
     for m in messages {
+        if m.role == "system" {
+            // Merge system turns so the contract lands exactly once, first.
+            if let Some(first) = out.first_mut() {
+                if first.get("role").and_then(|r| r.as_str()) == Some("system") {
+                    let merged = format!(
+                        "{}\n\n{}",
+                        first.get("content").and_then(|c| c.as_str()).unwrap_or(""),
+                        m.content
+                    );
+                    let mut merged = merged;
+                    with_comms_contract(&mut merged);
+                    first["content"] = serde_json::json!(merged);
+                    continue;
+                }
+            }
+            let mut sys = m.content.clone();
+            with_comms_contract(&mut sys);
+            out.push(serde_json::json!({"role": "system", "content": sys}));
+            continue;
+        }
         out.push(serde_json::json!({"role": m.role, "content": m.content}));
+    }
+    if out.is_empty()
+        || out
+            .first()
+            .and_then(|m| m.get("role"))
+            .and_then(|r| r.as_str())
+            != Some("system")
+    {
+        out.insert(0, serde_json::json!({"role": "system", "content": comms_contract_owned()}));
     }
     out
 }
@@ -1205,9 +1266,17 @@ fn build_chat_target(
                 // provider reuses the computed prefix instead of reprocessing and
                 // rebilling it (~90% cheaper input tokens, faster first token).
                 // OpenAI/Google cache automatically; Ollama has no per-token cost.
+                let mut joined = system_parts.join("\n\n");
+                with_comms_contract(&mut joined);
                 body["system"] = serde_json::json!([{
                     "type": "text",
-                    "text": system_parts.join("\n\n"),
+                    "text": joined,
+                    "cache_control": {"type": "ephemeral"}
+                }]);
+            } else {
+                body["system"] = serde_json::json!([{
+                    "type": "text",
+                    "text": comms_contract_owned(),
                     "cache_control": {"type": "ephemeral"}
                 }]);
             }
@@ -1282,9 +1351,11 @@ fn build_chat_target(
                 }
             }
             let mut body = serde_json::json!({ "contents": contents });
-            if !system_parts.is_empty() {
+            {
+                let mut joined = system_parts.join("\n\n");
+                with_comms_contract(&mut joined);
                 body["system_instruction"] =
-                    serde_json::json!({"parts": [{"text": system_parts.join("\n\n")}]});
+                    serde_json::json!({"parts": [{"text": joined}]});
             }
             let mut gen = serde_json::json!({});
             if let Some(t) = params.temperature {
@@ -2333,5 +2404,48 @@ mod tests {
             err.contains("providerId"),
             "Tauri should look up camelCase providerId, got: {err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod comms_contract_tests {
+    use super::*;
+
+    #[test]
+    fn every_assembly_path_carries_the_contract_exactly_once() {
+        let msgs = vec![ChatMsg::new("user", "hi")];
+
+        // 1. Flattened path (in-process GGUF engine + any (role, content) consumer).
+        let with_sys = ChatParams {
+            system_prompt: Some("You are X.".to_string()),
+            ..Default::default()
+        };
+        let flat = chat_messages_with_system(&msgs, &with_sys);
+        assert_eq!(flat[0].0, "system");
+        assert!(flat[0].1.contains("You are X."));
+        assert!(flat[0].1.contains("COMMUNICATION CONTRACT"));
+
+        // No system prompt at all still gets the contract, as the first turn.
+        let flat_bare = chat_messages_with_system(&msgs, &ChatParams::default());
+        assert_eq!(flat_bare[0].0, "system");
+        assert!(flat_bare[0].1.contains("COMMUNICATION CONTRACT"));
+
+        // 2. OpenAI-shaped path (openai / openai-compatible / openrouter / ollama).
+        let openai = openai_messages(&msgs, &with_sys);
+        assert_eq!(openai[0]["role"], "system");
+        let sys = openai[0]["content"].as_str().unwrap_or("");
+        assert!(sys.contains("You are X."));
+        assert!(sys.contains("COMMUNICATION CONTRACT"));
+
+        // 3. Idempotent — a prompt that already carries the contract is untouched.
+        let pre = ChatParams {
+            system_prompt: Some(format!("You are X.\n\n{}", COMMS_CONTRACT)),
+            ..Default::default()
+        };
+        let flat_pre = chat_messages_with_system(&msgs, &pre);
+        assert_eq!(flat_pre[0].1.matches("COMMUNICATION CONTRACT").count(), 1);
+        let openai_pre = openai_messages(&msgs, &pre);
+        let sys_pre = openai_pre[0]["content"].as_str().unwrap_or("");
+        assert_eq!(sys_pre.matches("COMMUNICATION CONTRACT").count(), 1);
     }
 }

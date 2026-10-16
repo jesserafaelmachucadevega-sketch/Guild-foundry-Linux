@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { copyToClipboard } from '../lib/api';
+import { stripMachineSyntax } from '../lib/sanitize';
 import type { Artifact, ChatMessage } from '../lib/types';
 import { ArtifactRenderer } from './ArtifactRenderer';
 
@@ -74,7 +75,7 @@ export function ChatBubble({ message, onToast, onBranch, onReply, onEmojiReactio
         )}
       </div>
       <div className="gf-bubble-body">
-        {renderText(message.content)}
+        {renderText(stripMachineSyntax(message.content))}
         {(message.artifacts ?? []).map((a: Artifact, i: number) => (
           <ArtifactRenderer
             key={i}

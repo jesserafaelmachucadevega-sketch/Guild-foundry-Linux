@@ -36,6 +36,7 @@ import {
   type ProviderSummary,
 } from '../../lib/providers';
 import { generateSuggestions } from '../../lib/suggestions';
+import { stripMachineSyntax } from '../../lib/sanitize';
 import type { ChatMsg } from '../../lib/chat';
 import type { Artifact, ArtifactKind, ChatMessage } from '../../lib/types';
 import type { NavSection } from '../AppShell';
@@ -171,7 +172,9 @@ function newId(prefix: string): string {
 }
 
 function stripToolFences(text: string): string {
-  return text.replace(/```tool_call\s*\n[\s\S]*?```/g, '').trim();
+  // Shared sanitizer: strips every tool-call dialect and template marker, not
+  // just this app's fenced format (see lib/sanitize.ts).
+  return stripMachineSyntax(text);
 }
 
 function extractMedia(tool: string, output: unknown): MediaAtt | null {
