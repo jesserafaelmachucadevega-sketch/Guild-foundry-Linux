@@ -419,6 +419,17 @@ body {
   right: auto;
   left: 0;
 }
+/* The action row sits on the pane surface, not on the bubble color, so its
+   icons use the on-surface text color for every bubble type and theme —
+   otherwise cloud bubbles paint them white on a white surface. */
+.gf-bubble-actions-row .gf-icon-btn {
+  color: var(--gf-offwhite);
+  border-color: var(--gf-border);
+}
+.gf-bubble-actions-row .gf-icon-btn:hover {
+  color: var(--gf-gold);
+  border-color: var(--gf-gold);
+}
 
 .gf-reply {
   transform: scaleX(-1);
